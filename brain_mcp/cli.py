@@ -142,9 +142,12 @@ def cmd_init(args):
         cmd_embed(args)
         console.print("\n[bold green]Your brain is ready![/bold green]\n")
         console.print("Next steps:")
-        console.print("   brain-mcp setup claude    Connect to Claude Code")
-        console.print("   brain-mcp setup cursor    Connect to Cursor")
-        console.print("   brain-mcp serve           Start MCP server")
+        console.print("   brain-mcp setup claude          Connect to Claude Desktop + Code")
+        console.print("   brain-mcp setup claude-desktop   Claude Desktop only")
+        console.print("   brain-mcp setup claude-code      Claude Code only")
+        console.print("   brain-mcp setup cursor           Connect to Cursor")
+        console.print("   brain-mcp setup windsurf         Connect to Windsurf")
+        console.print("   brain-mcp serve                  Start MCP server manually")
     elif sources:
         console.print("Next steps:")
         console.print("   brain-mcp init --full     Import everything now")
@@ -201,44 +204,10 @@ def cmd_serve(args):
     mcp.run()
 
 
-def cmd_setup(args):
-    """Auto-configure an MCP client."""
-    from rich.console import Console
-    console = Console()
+def _write_mcp_config(config_file, console, label=None):
+    """Write brain-mcp entry to an MCP config file."""
+    import shutil
 
-    client = args.client
-
-    # Determine config file path
-    import platform
-    is_mac = platform.system() == "Darwin"
-
-    if client == "claude-desktop":
-        if is_mac:
-            config_file = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
-        else:
-            config_file = Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
-    elif client == "claude-code":
-        config_file = Path.home() / ".claude.json"
-    elif client == "claude":
-        # Auto-detect: prefer Desktop if it exists, else Claude Code
-        desktop = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json" if is_mac else Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
-        code = Path.home() / ".claude.json"
-        if desktop.exists():
-            config_file = desktop
-            console.print(f"   [dim]Detected Claude Desktop[/dim]")
-        else:
-            config_file = code
-            console.print(f"   [dim]Detected Claude Code[/dim]")
-    elif client == "cursor":
-        config_file = Path.home() / ".cursor" / "mcp.json"
-    elif client == "windsurf":
-        config_file = Path.home() / ".windsurf" / "mcp.json"
-    else:
-        console.print(f"[red]Unknown client: {client}[/red]")
-        console.print("Supported: claude, claude-desktop, claude-code, cursor, windsurf")
-        return
-
-    # Read existing config or create new
     if config_file.exists():
         with open(config_file) as f:
             config = json.load(f)
@@ -253,8 +222,7 @@ def cmd_setup(args):
         console.print(f"[yellow]Brain MCP already configured in {config_file}[/yellow]")
         return
 
-    # Use full path to brain-mcp so Claude can find it
-    import shutil
+    # Use full path to brain-mcp so the client can find it
     brain_cmd = shutil.which("brain-mcp") or "brain-mcp"
 
     config["mcpServers"]["brain"] = {
@@ -265,8 +233,58 @@ def cmd_setup(args):
     with open(config_file, "w") as f:
         json.dump(config, f, indent=2)
 
-    console.print(f"[green]Brain MCP added to {config_file}[/green]")
-    console.print(f"Restart {client.title()} to activate.")
+    display = label or config_file
+    console.print(f"[green]✓ Brain MCP added to {display}[/green]  ({config_file})")
+
+
+def cmd_setup(args):
+    """Auto-configure an MCP client."""
+    from rich.console import Console
+    console = Console()
+
+    client = args.client
+
+    # Determine config file path
+    import platform
+    is_mac = platform.system() == "Darwin"
+
+    if client in ("claude-desktop", "desktop"):
+        if is_mac:
+            config_file = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+        else:
+            config_file = Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+    elif client in ("claude-code", "code"):
+        config_file = Path.home() / ".claude" / "mcp.json"
+    elif client == "claude":
+        # Auto-detect: set up BOTH if they exist, else whichever is found
+        desktop = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json" if is_mac else Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+        code = Path.home() / ".claude" / "mcp.json"
+
+        targets = []
+        if desktop.parent.exists():
+            targets.append(("Claude Desktop", desktop))
+        if code.parent.exists():
+            targets.append(("Claude Code", code))
+
+        if not targets:
+            # Neither installed — create Claude Code config (most common)
+            targets.append(("Claude Code", code))
+
+        for label, target_file in targets:
+            _write_mcp_config(target_file, console, label)
+
+        return
+    elif client == "cursor":
+        config_file = Path.home() / ".cursor" / "mcp.json"
+    elif client == "windsurf":
+        config_file = Path.home() / ".windsurf" / "mcp.json"
+    else:
+        console.print(f"[red]Unknown client: {client}[/red]")
+        console.print("Supported: claude, claude-desktop, claude-code, cursor, windsurf")
+        return
+
+    _write_mcp_config(config_file, console)
+    console.print(f"\nRestart {client.replace('-', ' ').title()} to activate.")
 
 
 def cmd_doctor(args):
@@ -329,7 +347,11 @@ def cmd_doctor(args):
         console.print(f"      -> Run: brain-mcp summarize (requires ANTHROPIC_API_KEY)")
 
     # MCP client configs
+    import platform
+    is_mac = platform.system() == "Darwin"
+    desktop_path = Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json" if is_mac else Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
     for name, path in [
+        ("Claude Desktop", desktop_path),
         ("Claude Code", Path.home() / ".claude" / "mcp.json"),
         ("Cursor", Path.home() / ".cursor" / "mcp.json"),
     ]:
@@ -341,7 +363,8 @@ def cmd_doctor(args):
                         console.print(f"   [green]ok[/green] {name}: configured")
                     else:
                         console.print(f"   [dim]--  {name}: not configured[/dim]")
-                        console.print(f"      -> Run: brain-mcp setup {name.lower().replace(' ', '')}")
+                        setup_name = name.lower().replace(" ", "-")
+                        console.print(f"      -> Run: brain-mcp setup {setup_name}")
                 except json.JSONDecodeError:
                     console.print(f"   [yellow]warn[/yellow]  {name}: config exists but invalid JSON")
         else:
@@ -419,7 +442,7 @@ def main():
 
     # setup
     p_setup = sub.add_parser("setup", help="Auto-configure an MCP client")
-    p_setup.add_argument("client", choices=["claude", "cursor", "windsurf"])
+    p_setup.add_argument("client", choices=["claude", "claude-desktop", "desktop", "claude-code", "code", "cursor", "windsurf"])
 
     # doctor
     sub.add_parser("doctor", help="Health check")

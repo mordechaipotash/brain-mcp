@@ -29,12 +29,38 @@
 ## Install
 
 ```bash
+pipx install brain-mcp        # recommended (isolated env, on your PATH)
+brain-mcp init --full          # discover conversations, import, embed
+brain-mcp setup claude         # auto-configure Claude Desktop + Code
+```
+
+Restart Claude. Done. **25 tools available.**
+
+<details>
+<summary>Alternative: pip install</summary>
+
+```bash
 pip install brain-mcp
 brain-mcp init --full
 brain-mcp setup claude
 ```
 
-Restart Claude. Done. **25 tools available.**
+> **Note:** If you install in a virtualenv, make sure `brain-mcp` is on your PATH — Claude Desktop/Code needs to find the binary. `pipx` handles this automatically.
+
+</details>
+
+<details>
+<summary>Setup for specific clients</summary>
+
+```bash
+brain-mcp setup claude           # auto-detect: configures both Desktop + Code
+brain-mcp setup claude-desktop   # Claude Desktop only
+brain-mcp setup claude-code      # Claude Code only
+brain-mcp setup cursor           # Cursor
+brain-mcp setup windsurf         # Windsurf
+```
+
+</details>
 
 ---
 
