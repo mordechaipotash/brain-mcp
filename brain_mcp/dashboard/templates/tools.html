@@ -1,7 +1,112 @@
 {% extends "base.html" %}
-{% block title %}Brain MCP — tools{% endblock %}
+{% block title %}Brain MCP — Tool Status{% endblock %}
+
 {% block content %}
-<h1>tools</h1>
-<p>Coming soon. This page is being built.</p>
-<p><a href="/">← Back to Dashboard</a></p>
+<hgroup>
+    <h1>🔧 Tool Status</h1>
+    <p>25 tools across 7 categories</p>
+</hgroup>
+
+<!-- Test All button -->
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+    <div id="test-all-progress"></div>
+    <button hx-post="/api/tools/test-all"
+            hx-target="#test-all-progress"
+            hx-swap="innerHTML">
+        🧪 Test All Tools
+    </button>
+</div>
+
+<!-- Tool cards — loaded via htmx -->
+<div id="tool-cards"
+     hx-get="/api/tools/cards"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <article aria-busy="true">Loading tool status...</article>
+</div>
+
+<!-- Interactive tool runner (modal-like) -->
+<dialog id="tool-runner">
+    <article>
+        <header>
+            <button aria-label="Close" rel="prev" onclick="document.getElementById('tool-runner').close()"></button>
+            <strong id="runner-title">Run Tool</strong>
+        </header>
+        <form id="runner-form" onsubmit="return false;">
+            <div id="runner-params"></div>
+            <button type="button" onclick="runTool()">▶ Run</button>
+        </form>
+        <div id="runner-result"></div>
+    </article>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openToolRunner(name, params) {
+    const dialog = document.getElementById('tool-runner');
+    document.getElementById('runner-title').textContent = 'Run: ' + name;
+    document.getElementById('runner-result').innerHTML = '';
+
+    // Build param inputs
+    const paramsDiv = document.getElementById('runner-params');
+    paramsDiv.innerHTML = '';
+    paramsDiv.dataset.toolName = name;
+
+    const paramObj = typeof params === 'string' ? JSON.parse(params) : params;
+    for (const [key, typeHint] of Object.entries(paramObj)) {
+        const label = document.createElement('label');
+        label.textContent = key;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.name = key;
+        input.placeholder = typeHint;
+
+        // Extract default value from type hint
+        if (typeHint.includes('=')) {
+            const def = typeHint.split('=')[1];
+            if (def !== 'None') input.value = def;
+        }
+
+        label.appendChild(input);
+        paramsDiv.appendChild(label);
+    }
+
+    dialog.showModal();
+}
+
+function runTool() {
+    const paramsDiv = document.getElementById('runner-params');
+    const name = paramsDiv.dataset.toolName;
+    const inputs = paramsDiv.querySelectorAll('input');
+
+    const params = {};
+    inputs.forEach(input => {
+        if (input.value) params[input.name] = input.value;
+    });
+
+    htmx.ajax('POST', '/api/tools/' + name + '/run', {
+        target: '#runner-result',
+        swap: 'innerHTML',
+        headers: { 'Content-Type': 'application/json' },
+        values: params,
+    });
+
+    // Fallback using fetch since htmx doesn't do JSON body easily
+    fetch('/api/tools/' + name + '/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+    })
+    .then(r => r.text())
+    .then(html => {
+        document.getElementById('runner-result').innerHTML = html;
+    })
+    .catch(e => {
+        document.getElementById('runner-result').innerHTML =
+            '<small style="color:#f85149;">Error: ' + e.message + '</small>';
+    });
+}
+</script>
 {% endblock %}

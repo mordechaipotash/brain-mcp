@@ -1,0 +1,152 @@
+<!-- Summary bar -->
+<div class="grid" style="margin-bottom: 1.5rem;">
+    <article>
+        <hgroup>
+            <h2>{{ total_ok }}/{{ total }}</h2>
+            <p>Tools Ready</p>
+        </hgroup>
+    </article>
+    <article>
+        <hgroup>
+            <h2 {% if total_degraded > 0 %}style="color: #d29922;"{% endif %}>{{ total_degraded }}</h2>
+            <p>Degraded</p>
+        </hgroup>
+    </article>
+    <article>
+        <hgroup>
+            <h2 {% if total_unavailable > 0 %}style="color: #f85149;"{% endif %}>{{ total_unavailable }}</h2>
+            <p>Unavailable</p>
+        </hgroup>
+    </article>
+</div>
+
+<!-- Data layer status -->
+<details>
+    <summary>Data Layers</summary>
+    <table>
+        <tbody>
+            <tr>
+                <td>Conversations (parquet)</td>
+                <td>{% if available.conversations %}🟢 Available{% else %}🔴 Missing{% endif %}</td>
+            </tr>
+            <tr>
+                <td>Embeddings (LanceDB)</td>
+                <td>{% if available.embeddings %}🟢 Available{% else %}🔴 Missing{% endif %}</td>
+            </tr>
+            <tr>
+                <td>Summaries</td>
+                <td>{% if available.summaries %}🟢 Available{% else %}🔴 Missing{% endif %}</td>
+            </tr>
+            <tr>
+                <td>GitHub</td>
+                <td>{% if available.github %}🟢 Available{% else %}🔴 Not synced{% endif %}</td>
+            </tr>
+            <tr>
+                <td>Principles</td>
+                <td>{% if available.principles %}🟢 Configured{% else %}🔴 Not configured{% endif %}</td>
+            </tr>
+        </tbody>
+    </table>
+</details>
+
+<!-- Tools grouped by category -->
+{% for category, tools in categories.items() %}
+<article>
+    <header>
+        <strong>{{ category }}</strong>
+        <small>({{ tools|length }} tools)</small>
+    </header>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Tool</th>
+                <th>Status</th>
+                <th>Test</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for tool in tools %}
+            <tr>
+                <td>
+                    <strong>{{ tool.name }}</strong>
+                    <br><small>{{ tool.description }}</small>
+                    {% if tool.missing %}
+                    <br><small style="color: #d29922;">Requires: {{ tool.missing | join(', ') }}</small>
+                    {% endif %}
+                </td>
+                <td>{{ tool.status_icon }}</td>
+                <td>
+                    <span id="test-result-{{ tool.name }}">
+                    {% if tool.testable and tool.status != 'unavailable' %}
+                        <button class="outline secondary"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
+                                hx-get="/api/tools/{{ tool.name }}/test"
+                                hx-target="#test-result-{{ tool.name }}"
+                                hx-swap="innerHTML">
+                            Test
+                        </button>
+                    {% elif tool.status == 'unavailable' %}
+                        <small style="color: #f85149;">—</small>
+                    {% else %}
+                        <small>—</small>
+                    {% endif %}
+                    </span>
+                </td>
+                <td>
+                    {% if tool.params %}
+                    <button class="outline"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
+                            onclick='openToolRunner("{{ tool.name }}", {{ tool.params | tojson }})'>
+                        ▶
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endfor %}
+
+<!-- Degraded tools fix suggestions -->
+{% if total_unavailable > 0 or total_degraded > 0 %}
+<article>
+    <header><strong>🔧 Fix Degraded Tools</strong></header>
+    {% if not available.conversations %}
+    <p>
+        <strong>Missing: Conversations</strong><br>
+        <small>Import your conversations first.</small>
+        <a href="/sources" role="button" class="outline" style="font-size: 0.8rem;">Go to Sources →</a>
+    </p>
+    {% endif %}
+    {% if not available.embeddings %}
+    <p>
+        <strong>Missing: Embeddings</strong><br>
+        <small>Run the embed pipeline to enable semantic search.</small>
+        <a href="/settings" role="button" class="outline" style="font-size: 0.8rem;">Go to Settings →</a>
+    </p>
+    {% endif %}
+    {% if not available.summaries %}
+    <p>
+        <strong>Missing: Summaries</strong><br>
+        <small>Generate summaries to power prosthetic tools.</small>
+        <a href="/settings" role="button" class="outline" style="font-size: 0.8rem;">Go to Settings →</a>
+    </p>
+    {% endif %}
+    {% if not available.github %}
+    <p>
+        <strong>Missing: GitHub</strong><br>
+        <small>Sync GitHub repos to enable code search.</small>
+        <a href="/settings" role="button" class="outline" style="font-size: 0.8rem;">Go to Settings →</a>
+    </p>
+    {% endif %}
+    {% if not available.principles %}
+    <p>
+        <strong>Missing: Principles</strong><br>
+        <small>Add a principles YAML file to your config for alignment checking.</small>
+    </p>
+    {% endif %}
+</article>
+{% endif %}
