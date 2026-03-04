@@ -126,6 +126,58 @@ sources:
         assert cfg.sources[1].name == "my-custom"
         assert cfg.sources[1].format == "jsonl"
 
+    def test_load_from_toml(self, tmp_path):
+        """Config loads from a TOML file correctly."""
+        from brain_mcp.config import load_config
+
+        toml_content = b"""
+data_dir = "./my_data"
+vectors_dir = "./my_vectors"
+domains = ["test-domain-1", "test-domain-2"]
+
+[embedding]
+model = "test-model"
+dim = 384
+batch_size = 25
+
+[server]
+name = "toml-brain"
+
+[[sources]]
+type = "claude-code"
+path = "~/.claude/projects/"
+
+[[sources]]
+type = "generic"
+path = "/tmp/conversations/"
+name = "my-custom"
+format = "jsonl"
+"""
+        config_file = tmp_path / "config.toml"
+        config_file.write_bytes(toml_content)
+
+        cfg = load_config(str(config_file))
+        assert cfg.embedding.model == "test-model"
+        assert cfg.embedding.dim == 384
+        assert cfg.embedding.batch_size == 25
+        assert cfg.server_name == "toml-brain"
+        assert cfg.domains == ["test-domain-1", "test-domain-2"]
+        assert len(cfg.sources) == 2
+        assert cfg.sources[0].type == "claude-code"
+        assert cfg.sources[1].name == "my-custom"
+
+    def test_toml_preferred_over_yaml(self, tmp_path, monkeypatch):
+        """When both config.toml and brain.yaml exist, TOML is preferred."""
+        from brain_mcp.config import _find_config_path
+
+        (tmp_path / "config.toml").write_bytes(b'[server]\nname = "toml-wins"\n')
+        (tmp_path / "brain.yaml").write_text("server:\n  name: yaml-loses\n")
+
+        monkeypatch.setenv("BRAIN_HOME", str(tmp_path))
+        path = _find_config_path()
+        assert path is not None
+        assert path.name == "config.toml"
+
     def test_config_singleton(self):
         """get_config returns a singleton, set_config overrides it."""
         from brain_mcp.config import BrainConfig, set_config, get_config

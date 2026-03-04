@@ -7,7 +7,13 @@ import sys
 from pathlib import Path
 
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "brain-mcp"
-DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "brain.yaml"
+DEFAULT_CONFIG_PATH_TOML = DEFAULT_CONFIG_DIR / "config.toml"
+DEFAULT_CONFIG_PATH_YAML = DEFAULT_CONFIG_DIR / "brain.yaml"
+# Prefer TOML if it exists, fall back to YAML
+DEFAULT_CONFIG_PATH = (
+    DEFAULT_CONFIG_PATH_TOML if DEFAULT_CONFIG_PATH_TOML.exists()
+    else DEFAULT_CONFIG_PATH_YAML
+)
 
 
 def discover_sources():
@@ -84,9 +90,7 @@ def discover_sources():
 
 
 def create_config(sources, config_dir=None):
-    """Create brain.yaml from discovered sources."""
-    import yaml
-
+    """Create config.toml (preferred) or brain.yaml (fallback) from discovered sources."""
     config_dir = config_dir or DEFAULT_CONFIG_DIR
     config_dir.mkdir(parents=True, exist_ok=True)
 
@@ -119,6 +123,18 @@ def create_config(sources, config_dir=None):
         ],
     }
 
+    # Try TOML first (Python 3.11+), fall back to YAML
+    try:
+        import tomli_w
+        config_path = config_dir / "config.toml"
+        with open(config_path, "wb") as f:
+            tomli_w.dump(config, f)
+        return config_path
+    except ImportError:
+        pass
+
+    # Fallback: YAML
+    import yaml
     config_path = config_dir / "brain.yaml"
     with open(config_path, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)

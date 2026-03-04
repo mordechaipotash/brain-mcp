@@ -1,0 +1,63 @@
+# brain-mcp configuration (TOML format)
+# Copy to ~/.config/brain-mcp/config.toml and edit for your setup.
+# Paths are relative to this file's location, or use absolute paths.
+# Legacy brain.yaml format is also supported.
+
+data_dir = "./data"
+vectors_dir = "./vectors"
+
+# Domains your brain covers (used by prosthetic tools)
+# Customize to match your actual areas of interest
+domains = [
+    "ai-dev", "backend-dev", "frontend-dev", "data-engineering",
+    "devops", "database", "python", "web-scraping", "automation",
+    "prompt-engineering", "documentation", "business-strategy",
+    "career", "finance", "personal", "health", "education",
+]
+
+# Conversation sources — add yours here
+[[sources]]
+type = "claude-code"
+path = "~/.claude/projects/"
+
+# ChatGPT export (download from Settings → Data Controls → Export)
+# [[sources]]
+# type = "chatgpt"
+# path = "~/Downloads/chatgpt-export/"
+
+# Clawdbot sessions
+# [[sources]]
+# type = "clawdbot"
+# path = "~/.clawdbot/agents/"
+
+# Generic JSONL (any {role, content, timestamp} format)
+# [[sources]]
+# type = "generic"
+# path = "~/my-conversations/"
+# name = "my-custom-source"
+
+# Embedding model (local, runs on your machine)
+[embedding]
+model = "nomic-ai/nomic-embed-text-v1.5"
+dim = 768
+batch_size = 50
+max_chars = 8000
+
+# Summarizer (optional — requires LLM API access)
+# This powers the prosthetic tools (tunnel_state, context_recovery, etc.)
+[summarizer]
+enabled = false
+provider = "anthropic"  # or "openai", "local" (ollama)
+model = "claude-sonnet-4-20250514"  # or any model from your provider
+api_key_env = "ANTHROPIC_API_KEY"  # env var containing your API key
+max_concurrent = 3
+
+# Principles for alignment_check (optional)
+# Write your own! See principles/template.yaml for format
+# [principles]
+# path = "./principles/my-principles.yaml"
+
+# Server settings
+# [server]
+# name = "my-brain"
+# instructions = "Custom instructions for your MCP server"

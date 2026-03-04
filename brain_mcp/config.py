@@ -1,8 +1,16 @@
 """
 brain-mcp — Configuration loader.
 
-Reads brain.yaml and provides all paths/settings to the rest of the system.
+Reads config.toml (preferred) or brain.yaml (legacy) and provides all
+paths/settings to the rest of the system.
 All paths are resolved relative to the config file location or absolute.
+
+Config search order:
+  1. Explicit path (if provided)
+  2. BRAIN_CONFIG env var
+  3. BRAIN_HOME env var
+  4. ./config.toml → ./brain.yaml (cwd)
+  5. ~/.config/brain-mcp/config.toml → ~/.config/brain-mcp/brain.yaml
 """
 
 import os
@@ -12,6 +20,21 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import yaml
+
+# Python 3.11+ has tomllib built-in
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib  # type: ignore[no-redef]
+    except ImportError:
+        tomllib = None  # type: ignore[assignment]
+
+# For writing TOML
+try:
+    import tomli_w
+except ImportError:
+    tomli_w = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -170,43 +193,85 @@ def validate_config(cfg: 'BrainConfig') -> list[str]:
     return warnings
 
 
+def _find_config_path(config_path: Optional[str] = None) -> Optional[Path]:
+    """Find the config file, checking TOML then YAML in each location."""
+    if config_path:
+        return Path(config_path)
+
+    if os.environ.get("BRAIN_CONFIG"):
+        return Path(os.environ["BRAIN_CONFIG"])
+
+    if os.environ.get("BRAIN_HOME"):
+        brain_home = Path(os.environ["BRAIN_HOME"])
+        for name in ("config.toml", "brain.yaml"):
+            p = brain_home / name
+            if p.exists():
+                return p
+        return None
+
+    # Check cwd
+    for name in ("config.toml", "brain.yaml"):
+        if Path(name).exists():
+            return Path(name)
+
+    # Check ~/.config/brain-mcp/
+    config_dir = Path.home() / ".config" / "brain-mcp"
+    for name in ("config.toml", "brain.yaml"):
+        p = config_dir / name
+        if p.exists():
+            return p
+
+    return None
+
+
+def _load_raw(path: Path) -> dict:
+    """Load raw config dict from TOML or YAML file."""
+    suffix = path.suffix.lower()
+
+    if suffix == ".toml":
+        if tomllib is None:
+            raise ImportError(
+                "TOML support requires Python 3.11+ or 'tomli' package. "
+                "Install with: pip install tomli"
+            )
+        with open(path, "rb") as f:
+            return tomllib.load(f)
+    else:
+        # YAML (default for .yaml, .yml, or unknown)
+        with open(path) as f:
+            return yaml.safe_load(f) or {}
+
+
 def load_config(config_path: Optional[str] = None) -> BrainConfig:
     """
-    Load configuration from brain.yaml.
+    Load configuration from config.toml (preferred) or brain.yaml (legacy).
 
-    Search order:
+    Search order (TOML checked before YAML at each location):
     1. Explicit path (if provided)
     2. BRAIN_CONFIG env var
-    3. BRAIN_HOME env var (looks for brain.yaml inside)
-    4. ./brain.yaml
-    5. ~/.config/brain-mcp/brain.yaml
+    3. BRAIN_HOME env var
+    4. ./config.toml → ./brain.yaml (cwd)
+    5. ~/.config/brain-mcp/config.toml → ~/.config/brain-mcp/brain.yaml
     """
-    if config_path:
-        path = Path(config_path)
-    elif os.environ.get("BRAIN_CONFIG"):
-        path = Path(os.environ["BRAIN_CONFIG"])
-    elif os.environ.get("BRAIN_HOME"):
-        brain_home = Path(os.environ["BRAIN_HOME"])
-        path = brain_home / "brain.yaml"
-        if not path.exists():
+    path = _find_config_path(config_path)
+
+    if path is None:
+        if os.environ.get("BRAIN_HOME"):
+            brain_home = Path(os.environ["BRAIN_HOME"])
             print(
-                f"BRAIN_HOME set to {brain_home} but no brain.yaml found there",
+                f"BRAIN_HOME set to {brain_home} but no config found there",
                 file=sys.stderr,
             )
             return BrainConfig(data_dir=brain_home / "data",
                                vectors_dir=brain_home / "vectors")
-    elif Path("brain.yaml").exists():
-        path = Path("brain.yaml")
-    elif (Path.home() / ".config" / "brain-mcp" / "brain.yaml").exists():
-        path = Path.home() / ".config" / "brain-mcp" / "brain.yaml"
-    else:
-        # Return defaults
-        print("No brain.yaml found, using defaults", file=sys.stderr)
+        print("No config found, using defaults", file=sys.stderr)
         return BrainConfig()
 
-    with open(path) as f:
-        raw = yaml.safe_load(f) or {}
+    if not path.exists():
+        print(f"Config file not found: {path}", file=sys.stderr)
+        return BrainConfig()
 
+    raw = _load_raw(path)
     config_dir = path.parent.resolve()
 
     def resolve(p: str) -> Path:
