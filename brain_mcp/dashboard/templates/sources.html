@@ -1,7 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Brain MCP — sources{% endblock %}
+{% block title %}Brain MCP — Sources{% endblock %}
+
 {% block content %}
-<h1>sources</h1>
-<p>Coming soon. This page is being built.</p>
-<p><a href="/">← Back to Dashboard</a></p>
+<hgroup>
+    <h1>📁 Sources</h1>
+    <p>Manage your conversation data sources</p>
+</hgroup>
+
+<!-- Action buttons -->
+<div class="grid">
+    <div>
+        <button class="outline"
+                hx-get="/api/sources/discover"
+                hx-target="#discover-results"
+                hx-swap="innerHTML">
+            🔍 Discover Sources
+        </button>
+    </div>
+    <div style="text-align: right;">
+        <button hx-post="/api/sources/sync-all"
+                hx-target="#sync-progress"
+                hx-swap="innerHTML"
+                hx-indicator="#sync-spinner">
+            🔄 Sync All Now
+        </button>
+    </div>
+</div>
+
+<!-- Sync progress area -->
+<div id="sync-progress"></div>
+
+<!-- Discovery results (hidden until clicked) -->
+<div id="discover-results"></div>
+
+<!-- Source cards — loaded via htmx -->
+<div id="source-cards"
+     hx-get="/api/sources/cards"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <article aria-busy="true">Loading sources...</article>
+</div>
 {% endblock %}

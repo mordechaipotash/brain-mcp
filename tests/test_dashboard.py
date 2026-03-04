@@ -104,6 +104,68 @@ class TestConversationViewer:
         assert response.status_code == 200
 
 
+class TestSourcesAPI:
+    """Test the sources API endpoints."""
+
+    def test_list_sources_json(self, client):
+        """Sources list should return JSON."""
+        response = client.get("/api/sources")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+
+    def test_source_cards_html(self, client):
+        """Source cards should return HTML partial."""
+        response = client.get("/api/sources/cards")
+        assert response.status_code == 200
+        assert "text/html" in response.headers.get("content-type", "")
+
+    def test_discover_sources(self, client):
+        """Discover should return HTML partial."""
+        response = client.get("/api/sources/discover")
+        assert response.status_code == 200
+        assert "text/html" in response.headers.get("content-type", "")
+
+    def test_sync_all(self, client):
+        """Sync all should return HTML with progress info."""
+        response = client.post("/api/sources/sync-all")
+        assert response.status_code == 200
+        assert "sync" in response.text.lower() or "Sync" in response.text
+
+
+class TestTasksAPI:
+    """Test the background tasks API."""
+
+    def test_list_tasks(self, client):
+        """Task list should return JSON array."""
+        response = client.get("/api/tasks")
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_nonexistent_task(self, client):
+        """Non-existent task should return 404."""
+        response = client.get("/api/tasks/nonexistent")
+        assert response.status_code == 404
+
+    def test_task_manager_create(self):
+        """TaskManager should create tasks with IDs."""
+        from brain_mcp.dashboard.tasks import TaskManager
+        tm = TaskManager()
+        task = tm.create("test-task")
+        assert task.id
+        assert task.name == "test-task"
+        assert task.status.value == "pending"
+
+    def test_task_manager_sync_update(self):
+        """TaskManager sync update should modify task."""
+        from brain_mcp.dashboard.tasks import TaskManager, TaskStatus
+        tm = TaskManager()
+        task = tm.create("test")
+        tm.update_sync(task.id, status=TaskStatus.RUNNING, message="Working...")
+        assert task.status == TaskStatus.RUNNING
+        assert task.message == "Working..."
+
+
 class TestSearchHelpers:
     """Test search helper functions."""
 

@@ -1,0 +1,59 @@
+<small>Last sync: {{ last_sync }}</small>
+
+{% if not sources %}
+<article>
+    <p>No sources configured. Click "Discover Sources" to auto-detect conversation sources on your machine.</p>
+</article>
+{% endif %}
+
+{% for source in sources %}
+<article>
+    <header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong>📁 {{ source.name }}</strong>
+                {% if source.path_exists %}
+                <span style="color: #3fb950;">✅</span>
+                {% else %}
+                <span style="color: #f85149;">⚠️ Path not found</span>
+                {% endif %}
+            </div>
+            <kbd>{{ source.type }}</kbd>
+        </div>
+    </header>
+
+    <p>
+        <small>Path: <code>{{ source.path }}</code></small>
+    </p>
+
+    <div class="grid">
+        <div>
+            <strong>{{ "{:,}".format(source.messages) }}</strong> messages
+        </div>
+        <div>
+            <strong>{{ "{:,}".format(source.conversations) }}</strong> conversations
+        </div>
+        <div>
+            {% if source.last_message %}
+            Last: <small>{{ source.last_message[:10] }}</small>
+            {% else %}
+            <small>No data yet</small>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if source.index >= 0 %}
+    <footer>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="outline secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;"
+                    hx-post="/api/sources/{{ source.index }}/sync"
+                    hx-target="#source-sync-{{ source.index }}"
+                    hx-swap="outerHTML">
+                Re-ingest
+            </button>
+            <span id="source-sync-{{ source.index }}"></span>
+        </div>
+    </footer>
+    {% endif %}
+</article>
+{% endfor %}

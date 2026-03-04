@@ -1,0 +1,18 @@
+{% if task %}
+<article>
+    {% if task.status == "running" %}
+    <p aria-busy="true">
+        {{ task.message }}
+        {% if task.progress %}
+        <progress value="{{ (task.progress * 100)|int }}" max="100"></progress>
+        {% endif %}
+    </p>
+    {% elif task.status == "done" %}
+    <p>✅ {{ task.message }}</p>
+    {% elif task.status == "failed" %}
+    <p>❌ {{ task.error or task.message }}</p>
+    {% else %}
+    <p>{{ task.message }}</p>
+    {% endif %}
+</article>
+{% endif %}

@@ -1,0 +1,33 @@
+{% if discovered %}
+<article>
+    <header><strong>🔍 Discovered Sources</strong></header>
+    <table>
+        <thead>
+            <tr>
+                <th>Source</th>
+                <th>Type</th>
+                <th>Sessions</th>
+                <th>Path</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for src in discovered %}
+            <tr>
+                <td><strong>{{ src.name }}</strong></td>
+                <td><kbd>{{ src.type }}</kbd></td>
+                <td>{{ src.session_count }}</td>
+                <td><code><small>{{ src.path }}</small></code></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <small>These sources were auto-detected on your machine.
+    Edit your <code>brain.yaml</code> or <code>config.toml</code> to add/remove sources,
+    then click "Sync All Now" to import.</small>
+</article>
+{% else %}
+<article>
+    <p>No additional conversation sources found on this machine.</p>
+    <small>Supported: Claude Code, Clawdbot, Claude Desktop, ChatGPT exports</small>
+</article>
+{% endif %}
