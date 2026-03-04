@@ -1,0 +1,242 @@
+<!-- ═══════════════════════════════════════ -->
+<!-- Data Directory                        -->
+<!-- ═══════════════════════════════════════ -->
+<article>
+    <header><strong>💾 Data Directory</strong></header>
+    <p>
+        <code>{{ disk.data_dir or 'Not configured' }}</code>
+    </p>
+    {% if disk %}
+    <table>
+        <tbody>
+            <tr><td>Conversations (parquet)</td><td>{{ disk.parquet }}</td></tr>
+            <tr><td>Vectors (LanceDB)</td><td>{{ disk.vectors }}</td></tr>
+            <tr><td>Summaries</td><td>{{ disk.summaries }}</td></tr>
+            <tr><td><strong>Total</strong></td><td><strong>{{ disk.total }}</strong></td></tr>
+        </tbody>
+    </table>
+    {% else %}
+    <p><small>No data directory configured.</small></p>
+    {% endif %}
+</article>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- Embedding Provider                    -->
+<!-- ═══════════════════════════════════════ -->
+<article>
+    <header><strong>🔗 Embedding Provider</strong></header>
+
+    <p>
+        Model: <kbd>{{ embedding.model }}</kbd>
+        · Dimensions: {{ embedding.dim }}
+    </p>
+
+    <!-- Embedding progress bar -->
+    <div id="embedding-progress"
+         hx-get="/api/settings/embedding-status"
+         hx-trigger="load"
+         hx-swap="none"
+         hx-on::after-request="
+            try {
+                const d = JSON.parse(event.detail.xhr.responseText);
+                document.getElementById('embed-bar').value = d.percent;
+                document.getElementById('embed-text').textContent =
+                    d.embedded.toLocaleString() + ' / ' + d.total.toLocaleString() +
+                    ' (' + d.percent + '%) — ' + d.remaining.toLocaleString() + ' remaining';
+            } catch(e) {}
+         ">
+    </div>
+    <progress id="embed-bar" value="0" max="100"></progress>
+    <small id="embed-text">Loading...</small>
+</article>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- Summary Provider                      -->
+<!-- ═══════════════════════════════════════ -->
+<article>
+    <header><strong>📝 Summary Provider</strong></header>
+
+    <p>
+        {% if summarizer.enabled %}
+        Status: <span style="color: #3fb950;">Enabled</span>
+        · Provider: <kbd>{{ summarizer.provider }}</kbd>
+        · Model: <kbd>{{ summarizer.model }}</kbd>
+        {% else %}
+        Status: <span style="color: #d29922;">Disabled</span>
+        {% endif %}
+    </p>
+
+    <!-- Summary progress bar -->
+    <div id="summary-progress"
+         hx-get="/api/settings/summary-status"
+         hx-trigger="load"
+         hx-swap="none"
+         hx-on::after-request="
+            try {
+                const d = JSON.parse(event.detail.xhr.responseText);
+                document.getElementById('summary-bar').value = d.percent;
+                document.getElementById('summary-text').textContent =
+                    d.summarized.toLocaleString() + ' / ' + d.total.toLocaleString() +
+                    ' (' + d.percent + '%) — ' + d.remaining.toLocaleString() + ' remaining';
+            } catch(e) {}
+         ">
+    </div>
+    <progress id="summary-bar" value="0" max="100"></progress>
+    <small id="summary-text">Loading...</small>
+</article>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- API Keys                              -->
+<!-- ═══════════════════════════════════════ -->
+<article>
+    <header><strong>🔑 API Keys</strong></header>
+
+    <label>
+        OpenRouter API Key
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <input type="password" id="openrouter-key"
+                   value="{{ config_dict.get('openrouter', {}).get('api_key', '') }}"
+                   placeholder="sk-or-..."
+                   style="flex: 1;">
+            <button class="outline secondary"
+                    style="padding: 0.4rem 0.75rem; white-space: nowrap;"
+                    onclick="toggleKeyVisibility(this)">
+                👁 Show
+            </button>
+        </div>
+    </label>
+
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <button class="outline secondary"
+                style="padding: 0.25rem 0.75rem; font-size: 0.85rem;"
+                onclick="
+                    const key = document.getElementById('openrouter-key').value;
+                    fetch('/api/settings/validate-key', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({key: key}),
+                    })
+                    .then(r => r.json())
+                    .then(d => {
+                        const el = document.getElementById('key-status');
+                        if (d.valid) {
+                            el.innerHTML = '<span style=\'color:#3fb950;\'>✅ Valid</span>';
+                        } else {
+                            el.innerHTML = '<span style=\'color:#f85149;\'>❌ ' + (d.error || 'Invalid') + '</span>';
+                        }
+                    });
+                ">
+            Validate
+        </button>
+        <button class="outline"
+                style="padding: 0.25rem 0.75rem; font-size: 0.85rem;"
+                hx-put="/api/settings"
+                hx-vals='js:{openrouter: {api_key: document.getElementById("openrouter-key").value}}'
+                hx-swap="none"
+                onclick="
+                    fetch('/api/settings', {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({openrouter: {api_key: document.getElementById('openrouter-key').value}}),
+                    }).then(() => {
+                        document.getElementById('key-status').innerHTML = '<span style=\'color:#3fb950;\'>💾 Saved</span>';
+                    });
+                ">
+            Save Key
+        </button>
+        <span id="key-status"></span>
+    </div>
+</article>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- Cron Management                       -->
+<!-- ═══════════════════════════════════════ -->
+<article>
+    <header><strong>⏰ Auto-Sync Schedule</strong></header>
+
+    <div id="cron-status"
+         hx-get="/api/settings/cron"
+         hx-trigger="load"
+         hx-swap="none"
+         hx-on::after-request="
+            try {
+                const d = JSON.parse(event.detail.xhr.responseText);
+                const el = document.getElementById('cron-display');
+                if (d.installed) {
+                    el.innerHTML = '<span style=\'color:#3fb950;\'>✅ Installed (' + d.count + ' entries)</span>';
+                    const list = document.getElementById('cron-entries');
+                    list.innerHTML = d.entries.map(e => '<li><code><small>' + e + '</small></code></li>').join('');
+                } else {
+                    el.innerHTML = '<span style=\'color:#d29922;\'>⚠️ Not installed</span>';
+                }
+            } catch(e) {}
+         ">
+    </div>
+
+    <p id="cron-display">Checking...</p>
+    <ul id="cron-entries"></ul>
+
+    <div style="display: flex; gap: 0.5rem;">
+        <button class="outline"
+                style="padding: 0.25rem 0.75rem; font-size: 0.85rem;"
+                hx-post="/api/settings/cron/install"
+                hx-swap="none"
+                hx-on::after-request="
+                    htmx.ajax('GET', '/api/settings/cron', {target: '#cron-status', swap: 'none'});
+                    htmx.trigger('#cron-status', 'load');
+                ">
+            📥 Install Cron Jobs
+        </button>
+        <button class="outline secondary"
+                style="padding: 0.25rem 0.75rem; font-size: 0.85rem;"
+                hx-delete="/api/settings/cron"
+                hx-swap="none"
+                hx-on::after-request="
+                    htmx.ajax('GET', '/api/settings/cron', {target: '#cron-status', swap: 'none'});
+                    htmx.trigger('#cron-status', 'load');
+                ">
+            🗑️ Remove Cron Jobs
+        </button>
+    </div>
+
+    <small style="margin-top: 0.5rem; display: block;">
+        Quick sync runs hourly (just conversations). Full sync runs nightly at 3am (all sources + embeddings).
+    </small>
+</article>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- MCP Connection                        -->
+<!-- ═══════════════════════════════════════ -->
+<article>
+    <header><strong>🔌 MCP Connection</strong></header>
+
+    <p>
+        Server: <kbd>brain-mcp</kbd> · Transport: <kbd>stdio</kbd>
+    </p>
+
+    <p>Add to your AI client config:</p>
+
+    <div id="settings-mcp-config"
+         hx-get="/api/settings/mcp-config"
+         hx-trigger="load"
+         hx-target="#settings-mcp-config"
+         hx-swap="innerHTML">
+        <p aria-busy="true">Loading...</p>
+    </div>
+</article>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- Actions                               -->
+<!-- ═══════════════════════════════════════ -->
+<article>
+    <header><strong>🎬 Actions</strong></header>
+
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <button class="outline" onclick="exportConfig()">
+            📤 Export Config
+        </button>
+    </div>
+
+    <hr>
+    <small>Config file: <code>{{ config_path }}</code></small>
+</article>

@@ -1,7 +1,57 @@
 {% extends "base.html" %}
-{% block title %}Brain MCP — settings{% endblock %}
+{% block title %}Brain MCP — Settings{% endblock %}
+
 {% block content %}
-<h1>settings</h1>
-<p>Coming soon. This page is being built.</p>
-<p><a href="/">← Back to Dashboard</a></p>
+<hgroup>
+    <h1>⚙️ Settings</h1>
+    <p>Configure your brain</p>
+</hgroup>
+
+<!-- Settings sections — loaded via htmx -->
+<div id="settings-cards"
+     hx-get="/api/settings/cards"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <article aria-busy="true">Loading settings...</article>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleKeyVisibility(btn) {
+    const input = btn.previousElementSibling;
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🙈 Hide';
+    } else {
+        input.type = 'password';
+        btn.textContent = '👁 Show';
+    }
+}
+
+function copyMcpConfig() {
+    const code = document.getElementById('settings-mcp-config-code');
+    if (code) {
+        navigator.clipboard.writeText(code.textContent).then(() => {
+            const btn = document.getElementById('copy-mcp-btn');
+            btn.textContent = '✅ Copied!';
+            setTimeout(() => { btn.textContent = '📋 Copy Config'; }, 2000);
+        });
+    }
+}
+
+function exportConfig() {
+    fetch('/api/settings')
+        .then(r => r.json())
+        .then(data => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'brain-mcp-config.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+}
+</script>
 {% endblock %}
