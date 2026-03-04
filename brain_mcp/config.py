@@ -73,7 +73,7 @@ class BrainConfig:
     ])
 
     # Server
-    server_name: str = "brain-mcp"
+    server_name: str = "my-brain"
     server_instructions: str = (
         "You are interfacing with a searchable brain — an indexed archive of AI conversations. "
         "Use these tools to search, synthesize, and navigate intellectual history."

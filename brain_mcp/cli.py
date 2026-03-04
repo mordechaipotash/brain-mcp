@@ -227,12 +227,12 @@ def _write_mcp_config(config_file, console, label=None):
     if "mcpServers" not in config:
         config["mcpServers"] = {}
 
-    # Use "brain-mcp" as key (not "brain") to avoid colliding with
+    # Use "my-brain" as key (not "brain") to avoid colliding with
     # users who may have a personal brain server already configured
-    server_key = "brain-mcp"
+    server_key = "my-brain"
 
     if server_key in config["mcpServers"]:
-        console.print(f"[yellow]brain-mcp already configured in {config_file}[/yellow]")
+        console.print(f"[yellow]my-brain already configured in {config_file}[/yellow]")
         return
 
     # Use full path to brain-mcp so the client can find it
@@ -375,7 +375,7 @@ def cmd_doctor(args):
             with open(path) as f:
                 try:
                     cfg_json = json.load(f)
-                    if "brain-mcp" in cfg_json.get("mcpServers", {}):
+                    if "my-brain" in cfg_json.get("mcpServers", {}):
                         console.print(f"   [green]ok[/green] {name}: configured")
                     else:
                         console.print(f"   [dim]--  {name}: not configured[/dim]")
