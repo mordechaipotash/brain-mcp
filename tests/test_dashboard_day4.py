@@ -5,6 +5,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+pytest.importorskip("fastapi", reason="Dashboard tests require fastapi")
 from fastapi.testclient import TestClient
 
 from brain_mcp.dashboard.app import create_app
