@@ -7,6 +7,8 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-green?style=flat-square)](https://modelcontextprotocol.io)
 [![LanceDB](https://img.shields.io/badge/vectors-LanceDB-orange?style=flat-square)](https://lancedb.com)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/brain-mcp?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/brain-mcp/)
+[![CI](https://img.shields.io/github/actions/workflow/status/mordechaipotash/brain-mcp/test.yml?style=flat-square&label=tests)](https://github.com/mordechaipotash/brain-mcp/actions)
 
 <p align="center">
   <img src="assets/demo-autoplay.gif" alt="brain-mcp Demo" width="640"/>
@@ -272,9 +274,15 @@ Full documentation at **[brainmcp.dev](https://brainmcp.dev)** — quickstart, t
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR guidelines. All contributions welcome.
+
+---
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ---
 
