@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brain-mcp"
-version = "0.1.4"
+version = "0.1.5"
 description = "Turn your AI conversations into a searchable second brain with cognitive prosthetic tools"
 readme = "README.md"
 license = {text = "MIT"}
@@ -25,13 +25,13 @@ dependencies = [
     "duckdb>=1.0",
     "pandas>=2.0",
     "pyarrow>=15.0",
-    "sentence-transformers>=2.0",
-    "einops",
     "pyyaml",
     "rich>=13.0",
+    "pytz",
 ]
 
 [project.optional-dependencies]
+embed = ["sentence-transformers>=2.0", "einops"]
 summarize = ["anthropic>=0.40", "openai>=1.0"]
 dev = ["pytest>=7.0", "build", "twine"]
 

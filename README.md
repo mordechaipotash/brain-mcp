@@ -29,20 +29,31 @@
 ## Install
 
 ```bash
-pipx install brain-mcp        # recommended (isolated env, on your PATH)
-brain-mcp init --full          # discover conversations, import, embed
-brain-mcp setup claude         # auto-configure Claude Desktop + Code
+pipx install brain-mcp          # recommended (isolated env, on your PATH)
+brain-mcp init                   # discover your conversations
+brain-mcp ingest                 # import them (fast, no GPU)
+brain-mcp setup claude           # auto-configure Claude Desktop + Code
 ```
 
-Restart Claude. Done. **25 tools available.**
+Restart Claude. **25 tools available.** Keyword search works immediately.
+
+```bash
+# Optional: enable semantic search (downloads ~1.5GB embedding model)
+pipx inject brain-mcp sentence-transformers einops
+brain-mcp embed
+```
 
 <details>
 <summary>Alternative: pip install</summary>
 
 ```bash
 pip install brain-mcp
-brain-mcp init --full
+brain-mcp init && brain-mcp ingest
 brain-mcp setup claude
+
+# Optional: semantic search
+pip install brain-mcp[embed]
+brain-mcp embed
 ```
 
 > **Note:** If you install in a virtualenv, make sure `brain-mcp` is on your PATH — Claude Desktop/Code needs to find the binary. `pipx` handles this automatically.

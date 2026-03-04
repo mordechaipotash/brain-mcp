@@ -42,7 +42,14 @@ def register(mcp):
 
         embedding = get_embedding(query)
         if not embedding:
-            return "Could not generate embedding for query."
+            try:
+                import sentence_transformers  # noqa: F401
+                return "Could not generate embedding for query."
+            except ImportError:
+                return ("Semantic search requires the embedding model.\n"
+                        "Install with: pip install brain-mcp[embed]\n"
+                        "Then run: brain-mcp embed\n\n"
+                        "Meanwhile, use search_conversations() for keyword search.")
 
         db = get_lance_db()
         if not db:

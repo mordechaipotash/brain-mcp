@@ -37,20 +37,26 @@ _principles_data = None
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def get_embedding_model():
-    """Get cached embedding model (lazy-loaded on first call)."""
+    """Get cached embedding model (lazy-loaded on first call).
+    Returns None if sentence-transformers is not installed."""
     global _embedding_model
     if _embedding_model is None:
-        cfg = get_config()
-        from sentence_transformers import SentenceTransformer
-        _embedding_model = SentenceTransformer(cfg.embedding.model, trust_remote_code=True)
+        try:
+            cfg = get_config()
+            from sentence_transformers import SentenceTransformer
+            _embedding_model = SentenceTransformer(cfg.embedding.model, trust_remote_code=True)
+        except ImportError:
+            return None
     return _embedding_model
 
 
 def get_embedding(text: str) -> Optional[list[float]]:
-    """Get embedding vector for text. Returns None on failure."""
+    """Get embedding vector for text. Returns None if model unavailable."""
     try:
         cfg = get_config()
         model = get_embedding_model()
+        if model is None:
+            return None
         embedding = model.encode(text[:cfg.embedding.max_chars], convert_to_numpy=True)
         return embedding.tolist()
     except Exception:
