@@ -67,3 +67,71 @@ async def settings_page(request: Request):
         "request": request,
         "active_page": "settings",
     })
+
+
+@router.get("/conversation/{conv_id}", response_class=HTMLResponse)
+async def conversation_page(request: Request, conv_id: str, highlight: str = ""):
+    """Full conversation viewer page."""
+    from brain_mcp.server.db import get_conversations
+    templates = request.app.state.templates
+
+    try:
+        con = get_conversations()
+        rows = con.execute("""
+            SELECT source, conversation_title, role, content, created,
+                   word_count, has_code, msg_index
+            FROM conversations
+            WHERE conversation_id = ?
+            ORDER BY msg_index ASC
+        """, [conv_id]).fetchall()
+
+        if not rows:
+            return templates.TemplateResponse("conversation.html", {
+                "request": request,
+                "active_page": "search",
+                "conversation_id": conv_id,
+                "title": "Not Found",
+                "messages": [],
+                "source": "",
+                "highlight": highlight,
+                "error": f"Conversation {conv_id} not found.",
+            })
+
+        messages = []
+        title = rows[0][1] or "Untitled"
+        source = rows[0][0]
+
+        for row in rows:
+            _, _, role, content, created, word_count, has_code, msg_index = row
+            date_str = str(created)[:19] if created else ""
+            messages.append({
+                "role": role,
+                "content": content or "",
+                "date": date_str,
+                "word_count": word_count or 0,
+                "has_code": bool(has_code),
+                "msg_index": msg_index,
+            })
+
+        return templates.TemplateResponse("conversation.html", {
+            "request": request,
+            "active_page": "search",
+            "conversation_id": conv_id,
+            "title": title,
+            "messages": messages,
+            "source": source,
+            "highlight": highlight,
+            "message_count": len(messages),
+        })
+
+    except Exception as e:
+        return templates.TemplateResponse("conversation.html", {
+            "request": request,
+            "active_page": "search",
+            "conversation_id": conv_id,
+            "title": "Error",
+            "messages": [],
+            "source": "",
+            "highlight": highlight,
+            "error": str(e),
+        })

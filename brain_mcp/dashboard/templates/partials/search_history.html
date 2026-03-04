@@ -1,0 +1,31 @@
+{% if history %}
+<article>
+    <header><strong>🕐 Recent Searches</strong></header>
+    <ul>
+    {% for item in history %}
+        <li>
+            <a href="#" onclick="document.getElementById('search-input').value='{{ item.query }}'; doSearch(); return false;">
+                "{{ item.query }}"
+            </a>
+            <small>
+                — {{ item.mode }}
+                · {{ item.result_count }} results
+                · {{ item.duration_ms }}ms
+                {% if item.timestamp %}
+                · {{ item.timestamp[:16].replace('T', ' ') }}
+                {% endif %}
+            </small>
+        </li>
+    {% endfor %}
+    </ul>
+</article>
+{% else %}
+<article>
+    <p>Start typing to search your brain. Try semantic search for conceptual queries, or keyword search for exact matches.</p>
+    <p><small>
+        <strong>Semantic:</strong> Finds conceptually similar content using AI embeddings<br>
+        <strong>Keyword:</strong> Exact text matching across all conversations<br>
+        <strong>Summaries:</strong> Searches structured conversation summaries with domain/decision metadata
+    </small></p>
+</article>
+{% endif %}

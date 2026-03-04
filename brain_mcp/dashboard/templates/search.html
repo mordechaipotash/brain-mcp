@@ -1,7 +1,145 @@
 {% extends "base.html" %}
-{% block title %}Brain MCP — search{% endblock %}
+{% block title %}Brain MCP — Search{% endblock %}
+
 {% block content %}
-<h1>search</h1>
-<p>Coming soon. This page is being built.</p>
-<p><a href="/">← Back to Dashboard</a></p>
+<h1>🔍 Search Your Brain</h1>
+
+<!-- Search input -->
+<form id="search-form" onsubmit="return false;">
+    <div class="grid">
+        <input type="search"
+               id="search-input"
+               name="q"
+               placeholder="Search your brain..."
+               autocomplete="off"
+               autofocus
+               oninput="debounceSearch(this, buildSearchUrl())">
+        <button type="button" onclick="doSearch()">Search</button>
+    </div>
+
+    <!-- Search mode radio buttons -->
+    <fieldset>
+        <legend><strong>Mode</strong></legend>
+        <label>
+            <input type="radio" name="mode" value="semantic" checked onchange="doSearch()">
+            Semantic
+        </label>
+        <label>
+            <input type="radio" name="mode" value="keyword" onchange="doSearch()">
+            Keyword
+        </label>
+        <label>
+            <input type="radio" name="mode" value="summaries" onchange="doSearch()">
+            Summaries
+        </label>
+    </fieldset>
+
+    <!-- Filters (collapsible) -->
+    <details id="filters-section">
+        <summary>Filters</summary>
+        <div class="grid">
+            <label>
+                Source
+                <select name="source" id="filter-source" onchange="doSearch()">
+                    <option value="">All Sources</option>
+                </select>
+            </label>
+            <label>
+                Role
+                <select name="role" id="filter-role" onchange="doSearch()">
+                    <option value="">All Roles</option>
+                    <option value="user">User</option>
+                    <option value="assistant">Assistant</option>
+                </select>
+            </label>
+            <label>
+                From
+                <input type="date" name="date_from" id="filter-date-from" onchange="doSearch()">
+            </label>
+            <label>
+                To
+                <input type="date" name="date_to" id="filter-date-to" onchange="doSearch()">
+            </label>
+        </div>
+    </details>
+</form>
+
+<hr>
+
+<!-- Search results (htmx target) -->
+<div id="search-results"
+     hx-get="/api/search/recent"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <p aria-busy="true">Loading recent searches...</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Populate source filter on load
+fetch('/api/search/filters')
+    .then(r => r.json())
+    .then(data => {
+        const sel = document.getElementById('filter-source');
+        (data.sources || []).forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            sel.appendChild(opt);
+        });
+    })
+    .catch(() => {});
+
+function getSelectedMode() {
+    const radios = document.querySelectorAll('input[name="mode"]');
+    for (const r of radios) {
+        if (r.checked) return r.value;
+    }
+    return 'semantic';
+}
+
+function buildSearchUrl() {
+    const q = document.getElementById('search-input').value;
+    const mode = getSelectedMode();
+    const source = document.getElementById('filter-source').value;
+    const role = document.getElementById('filter-role').value;
+    const dateFrom = document.getElementById('filter-date-from').value;
+    const dateTo = document.getElementById('filter-date-to').value;
+
+    let url = '/api/search?q=' + encodeURIComponent(q) + '&mode=' + mode;
+    if (source) url += '&source=' + encodeURIComponent(source);
+    if (role) url += '&role=' + encodeURIComponent(role);
+    if (dateFrom) url += '&date_from=' + dateFrom;
+    if (dateTo) url += '&date_to=' + dateTo;
+    return url;
+}
+
+function doSearch() {
+    const q = document.getElementById('search-input').value;
+    if (!q.trim()) return;
+    const url = buildSearchUrl();
+    htmx.ajax('GET', url, '#search-results');
+}
+
+// Override debounceSearch to use our URL builder
+let _searchTimer = null;
+function debounceSearch(el, url) {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => {
+        if (el.value.trim()) {
+            htmx.ajax('GET', url, '#search-results');
+        }
+    }, 500);
+}
+
+// Handle Enter key
+document.getElementById('search-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTimeout(_searchTimer);
+        doSearch();
+    }
+});
+</script>
 {% endblock %}

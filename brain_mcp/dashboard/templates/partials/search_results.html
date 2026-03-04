@@ -1,0 +1,101 @@
+{% if empty %}
+<!-- Empty state: no query yet -->
+{% elif error is defined and error %}
+<article>
+    <header>⚠️ Search Error</header>
+    <p>{{ error }}</p>
+</article>
+{% elif results|length == 0 %}
+<article>
+    <p>No results found for "<strong>{{ query }}</strong>" ({{ mode }} search, {{ duration_ms }}ms)</p>
+</article>
+{% else %}
+<p>
+    <small>
+        {{ total_results }} result{{ 's' if total_results != 1 else '' }} for
+        "<strong>{{ query }}</strong>"
+        ({{ mode }}, {{ duration_ms }}ms)
+    </small>
+</p>
+
+{% for result in results %}
+<article class="search-result">
+    <header>
+        <div class="result-header">
+            {% if result.similarity is not none %}
+            <span class="{{ result.similarity_class }}" title="Similarity: {{ result.similarity }}">
+                {{ result.similarity_dot }} {{ result.similarity }}
+            </span>
+            {% endif %}
+            <span class="result-date">{{ result.date }}</span>
+            {% if result.source %}
+            <span class="result-source">
+                <kbd>{{ result.source }}</kbd>
+            </span>
+            {% endif %}
+            {% if result.role %}
+            <span class="result-role">
+                <small>{{ result.role }}</small>
+            </span>
+            {% endif %}
+        </div>
+        <strong>{{ result.conversation_title }}</strong>
+    </header>
+
+    {% if result.type == 'summary' %}
+    <!-- Summary result: show extra metadata -->
+    <p>{{ result.content_preview }}</p>
+    {% if result.domain %}
+    <small>
+        <strong>Domain:</strong> {{ result.domain }}
+        {% if result.importance %} · {{ result.importance }}{% endif %}
+        {% if result.thinking_stage %} · {{ result.thinking_stage }}{% endif %}
+    </small>
+    {% endif %}
+    {% if result.concepts %}
+    <p><small><strong>Concepts:</strong> {{ result.concepts|join(', ') }}</small></p>
+    {% endif %}
+    {% if result.open_questions and result.open_questions[0] != 'none identified' %}
+    <details>
+        <summary><small>Open Questions ({{ result.open_questions|length }})</small></summary>
+        <ul>
+        {% for q in result.open_questions %}
+            <li><small>{{ q }}</small></li>
+        {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+    {% if result.decisions and result.decisions[0] != 'none identified' %}
+    <details>
+        <summary><small>Decisions ({{ result.decisions|length }})</small></summary>
+        <ul>
+        {% for d in result.decisions %}
+            <li><small>{{ d }}</small></li>
+        {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+    {% else %}
+    <!-- Message result -->
+    <p>{{ result.content_preview }}</p>
+    {% endif %}
+
+    <footer>
+        <small>Conv: <code>{{ result.conversation_id[:12] }}...</code></small>
+        <a href="/conversation/{{ result.conversation_id }}?highlight={{ query }}"
+           role="button" class="outline secondary" style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">
+            View Full Conversation →
+        </a>
+    </footer>
+</article>
+{% endfor %}
+
+{% if has_more is defined and has_more %}
+<button class="outline"
+        hx-get="/api/search?q={{ query }}&mode={{ mode }}&offset={{ offset + limit }}&limit={{ limit }}"
+        hx-target="this"
+        hx-swap="outerHTML">
+    Load More ↓
+</button>
+{% endif %}
+{% endif %}

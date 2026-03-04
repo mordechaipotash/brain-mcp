@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Brain MCP — {{ title }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+    <ul>
+        <li><a href="/search">← Search</a></li>
+        <li>{{ title }}</li>
+    </ul>
+</nav>
+
+{% if error is defined and error %}
+<article>
+    <header>⚠️ Error</header>
+    <p>{{ error }}</p>
+</article>
+{% else %}
+
+<hgroup>
+    <h2>{{ title }}</h2>
+    <p>
+        <kbd>{{ source }}</kbd>
+        · {{ message_count }} messages
+        · <code>{{ conversation_id[:16] }}...</code>
+    </p>
+</hgroup>
+
+<div class="conversation-thread">
+    {% for msg in messages %}
+    <article class="message message-{{ msg.role }}"
+             {% if highlight and highlight.lower() in msg.content.lower() %}
+             style="border-left: 4px solid var(--pico-primary-color);"
+             {% endif %}>
+        <header>
+            <strong>{{ msg.role }}</strong>
+            {% if msg.date %}<small>{{ msg.date }}</small>{% endif %}
+            {% if msg.word_count %}<small>· {{ msg.word_count }} words</small>{% endif %}
+            {% if msg.has_code %}<small>· 💻 code</small>{% endif %}
+        </header>
+        <div class="message-content">{{ msg.content[:5000] }}</div>
+        {% if msg.content|length > 5000 %}
+        <details>
+            <summary>Show full message ({{ msg.content|length }} chars)</summary>
+            <div class="message-content">{{ msg.content }}</div>
+        </details>
+        {% endif %}
+    </article>
+    {% endfor %}
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if highlight %}
+<script>
+// Scroll to first highlighted message
+document.addEventListener('DOMContentLoaded', function() {
+    const highlighted = document.querySelector('[style*="border-left"]');
+    if (highlighted) {
+        highlighted.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+});
+</script>
+{% endif %}
+{% endblock %}
