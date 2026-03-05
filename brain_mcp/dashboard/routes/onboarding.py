@@ -3,8 +3,11 @@
 Provides:
 - GET  /api/onboarding/status          — Check if onboarding is complete
 - POST /api/onboarding/complete        — Mark onboarding done
+- GET  /api/onboarding/discover        — Auto-detect conversation sources on disk (JSON)
 - GET  /api/onboarding/mcp-config      — Generate MCP config JSON
 - POST /api/onboarding/auto-configure  — Write config to Claude/Cursor config files
+- POST /api/onboarding/configure-embedding — Save embedding provider choice
+- POST /api/onboarding/configure-summaries — Save summary provider choice
 """
 
 import json
@@ -118,6 +121,150 @@ async def set_step(step: int):
     state["current_step"] = min(max(step, 1), 5)
     _save_onboarding_state(state)
     return {"status": "ok", "current_step": state["current_step"]}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SOURCE DISCOVERY
+# ═══════════════════════════════════════════════════════════════════
+
+# Known ingesters with module-level discover() functions.
+# Maps source_type → (module_path, display_name).
+_DISCOVER_MODULES = {
+    "chatgpt-export": ("brain_mcp.ingest.chatgpt_export", "ChatGPT Export"),
+    "cursor": ("brain_mcp.ingest.cursor", "Cursor"),
+    "gemini-cli": ("brain_mcp.ingest.gemini_cli", "Gemini CLI"),
+}
+
+# Well-known paths for ingesters that don't have discover() yet.
+_WELL_KNOWN_PATHS = [
+    ("claude-code", "Claude Code", Path.home() / ".claude" / "projects", "*.jsonl"),
+    ("clawdbot", "Clawdbot", Path.home() / ".clawdbot" / "agents", "*.jsonl"),
+    (
+        "claude-desktop",
+        "Claude Desktop",
+        Path.home()
+        / "Library"
+        / "Application Support"
+        / "Claude"
+        / "chat_conversations",
+        "*.jsonl",
+    ),
+]
+
+
+def _discover_sources() -> list[dict]:
+    """Run source discovery across all known ingesters.
+
+    Uses the ingester registry (discover_all) if populated, otherwise
+    falls back to calling each ingester's module-level discover() plus
+    well-known path checks for ingesters that lack discover().
+
+    Returns a list of:
+        {source_type, display_name, paths: [{path, count_hint}]}
+    """
+    results: list[dict] = []
+
+    # ── Try the registry first ──────────────────────────────────
+    try:
+        from brain_mcp.ingest.registry import discover_all
+
+        registry_results = discover_all()
+        if registry_results:
+            for source_type, items in registry_results.items():
+                ingester = None
+                try:
+                    from brain_mcp.ingest.registry import get_ingester
+                    ingester = get_ingester(source_type)
+                except Exception:
+                    pass
+
+                display_name = (
+                    ingester.display_name if ingester else source_type
+                )
+                paths = []
+                for item in items:
+                    paths.append(
+                        {
+                            "path": item.get("path", ""),
+                            "count_hint": item.get("size", 0),
+                        }
+                    )
+                results.append(
+                    {
+                        "source_type": source_type,
+                        "display_name": display_name,
+                        "paths": paths,
+                    }
+                )
+            # If registry gave us results, return them
+            if results:
+                return results
+    except Exception:
+        pass
+
+    # ── Fallback: call module-level discover() functions ────────
+    seen_types: set[str] = set()
+
+    for source_type, (module_path, display_name) in _DISCOVER_MODULES.items():
+        try:
+            import importlib
+
+            mod = importlib.import_module(module_path)
+            found = mod.discover()
+            if found:
+                paths = []
+                for item in found:
+                    paths.append(
+                        {
+                            "path": item.get("path", ""),
+                            "count_hint": item.get("size", 0),
+                        }
+                    )
+                results.append(
+                    {
+                        "source_type": source_type,
+                        "display_name": display_name,
+                        "paths": paths,
+                    }
+                )
+                seen_types.add(source_type)
+        except Exception:
+            pass
+
+    # ── Fallback: well-known paths for ingesters without discover() ──
+    for source_type, display_name, base_path, glob_pattern in _WELL_KNOWN_PATHS:
+        if source_type in seen_types:
+            continue
+        try:
+            if base_path.exists():
+                files = list(base_path.rglob(glob_pattern))
+                if files:
+                    results.append(
+                        {
+                            "source_type": source_type,
+                            "display_name": display_name,
+                            "paths": [
+                                {
+                                    "path": str(base_path),
+                                    "count_hint": len(files),
+                                }
+                            ],
+                        }
+                    )
+        except Exception:
+            pass
+
+    return results
+
+
+@router.get("/discover")
+async def discover():
+    """Auto-detect conversation sources on disk.
+
+    Returns JSON list of discovered sources:
+        [{source_type, display_name, paths: [{path, count_hint}]}]
+    """
+    return _discover_sources()
 
 
 # ═══════════════════════════════════════════════════════════════════

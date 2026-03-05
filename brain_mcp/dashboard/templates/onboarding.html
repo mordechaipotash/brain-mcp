@@ -44,6 +44,19 @@
             <header><strong>📥 Step 2: Import Conversations</strong></header>
             <p>Import your conversations into Brain MCP. This may take a moment depending on volume.</p>
 
+            <!-- Discovered sources summary -->
+            <div id="discovered-sources-summary" x-show="discoveredSources.length > 0" x-cloak>
+                <h6>Discovered Sources</h6>
+                <template x-for="src in discoveredSources" :key="src.source_type">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <span>✅</span>
+                        <strong x-text="src.display_name"></strong>
+                        <small x-text="src.paths.length + ' location(s)'" style="color: var(--muted-color);"></small>
+                    </div>
+                </template>
+                <hr>
+            </div>
+
             <div id="ingest-area">
                 <button hx-post="/api/sources/sync-all"
                         hx-target="#ingest-progress"
@@ -253,6 +266,7 @@ function onboardingWizard() {
         openrouterKey: '',
         keyValidating: false,
         keyStatus: '',  // '', 'valid', 'invalid'
+        discoveredSources: [],
 
         async init() {
             try {
@@ -263,6 +277,14 @@ function onboardingWizard() {
                     return;
                 }
                 this.step = data.current_step || 1;
+            } catch(e) {}
+
+            // Fetch discovered sources for step 2 display
+            try {
+                const discResp = await fetch('/api/onboarding/discover');
+                if (discResp.ok) {
+                    this.discoveredSources = await discResp.json();
+                }
             } catch(e) {}
         },
 

@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pandas as pd
 
+# Import all ingester modules to trigger @register decorators
+from . import claude_code, clawdbot, chatgpt, chatgpt_export, cursor, gemini_cli  # noqa: F401
+from .registry import get_all_ingesters
+
 
 def run_all_ingesters(cfg) -> int:
     """
@@ -17,22 +21,11 @@ def run_all_ingesters(cfg) -> int:
     Returns:
         Total number of messages ingested.
     """
-    from .claude_code import ingest as ingest_claude_code
-    from .chatgpt import ingest as ingest_chatgpt
-    from .clawdbot import ingest as ingest_clawdbot
-    from .cursor import ingest as ingest_cursor
-    from .chatgpt_export import ingest as ingest_chatgpt_export
-    from .gemini_cli import ingest as ingest_gemini_cli
     from .generic import ingest_path
 
-    INGESTERS = {
-        "claude-code": ingest_claude_code,
-        "chatgpt": ingest_chatgpt,
-        "clawdbot": ingest_clawdbot,
-        "cursor": ingest_cursor,
-        "chatgpt-export": ingest_chatgpt_export,
-        "gemini-cli": ingest_gemini_cli,
-    }
+    # Build INGESTERS dict from registry (backward compatible)
+    _registered = get_all_ingesters()
+    INGESTERS = {key: inst.ingest for key, inst in _registered.items()}
 
     all_records = []
 

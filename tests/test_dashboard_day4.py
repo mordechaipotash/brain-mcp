@@ -1,6 +1,7 @@
 """Tests for dashboard Day 4-5: onboarding, tools, settings pages."""
 
 import json
+import importlib
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -162,6 +163,160 @@ class TestOnboardingAPI:
         )
         assert response.status_code == 200
         assert response.json()["provider"] == "gemini"
+
+
+class TestOnboardingDiscover:
+    """Test the /api/onboarding/discover endpoint."""
+
+    def test_discover_returns_list(self, client):
+        """Discover endpoint should return a JSON list."""
+        response = client.get("/api/onboarding/discover")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+
+    def test_discover_item_shape(self, client, tmp_path):
+        """Each discovered source should have source_type, display_name, paths."""
+        # Create a fake claude-code directory so at least one source is found
+        fake_projects = tmp_path / ".claude" / "projects" / "test"
+        fake_projects.mkdir(parents=True)
+        (fake_projects / "session.jsonl").write_text("{}")
+
+        with patch(
+            "brain_mcp.dashboard.routes.onboarding._WELL_KNOWN_PATHS",
+            [("claude-code", "Claude Code", tmp_path / ".claude" / "projects", "*.jsonl")],
+        ), patch(
+            "brain_mcp.dashboard.routes.onboarding._DISCOVER_MODULES",
+            {},
+        ):
+            response = client.get("/api/onboarding/discover")
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) >= 1
+
+            item = data[0]
+            assert "source_type" in item
+            assert "display_name" in item
+            assert "paths" in item
+            assert isinstance(item["paths"], list)
+            assert len(item["paths"]) >= 1
+            assert "path" in item["paths"][0]
+            assert "count_hint" in item["paths"][0]
+
+    def test_discover_uses_registry_when_populated(self, client):
+        """Discover should prefer the ingester registry when it has results."""
+        fake_registry_results = {
+            "test-source": [{"path": "/fake/path", "size": 42}],
+        }
+        mock_ingester = MagicMock()
+        mock_ingester.display_name = "Test Source"
+
+        with patch(
+            "brain_mcp.dashboard.routes.onboarding.discover_all",
+            return_value=fake_registry_results,
+            create=True,
+        ) as mock_discover_all, patch(
+            "brain_mcp.ingest.registry.discover_all",
+            return_value=fake_registry_results,
+        ), patch(
+            "brain_mcp.ingest.registry.get_ingester",
+            return_value=mock_ingester,
+        ):
+            # Call the internal function directly to bypass import caching
+            from brain_mcp.dashboard.routes.onboarding import _discover_sources
+
+            results = _discover_sources()
+            assert len(results) >= 1
+            found = [r for r in results if r["source_type"] == "test-source"]
+            assert len(found) == 1
+            assert found[0]["display_name"] == "Test Source"
+            assert found[0]["paths"][0]["path"] == "/fake/path"
+            assert found[0]["paths"][0]["count_hint"] == 42
+
+    def test_discover_fallback_module_discover(self, client, tmp_path):
+        """Discover should fall back to module-level discover() functions."""
+        fake_results = [{"path": "/tmp/fake.json", "size": 100}]
+
+        fake_mod = MagicMock()
+        fake_mod.discover = MagicMock(return_value=fake_results)
+
+        with patch(
+            "brain_mcp.ingest.registry.discover_all",
+            return_value={},
+        ), patch(
+            "brain_mcp.dashboard.routes.onboarding._DISCOVER_MODULES",
+            {"test-mod": ("fake_module", "Test Module")},
+        ), patch(
+            "brain_mcp.dashboard.routes.onboarding._WELL_KNOWN_PATHS",
+            [],
+        ), patch(
+            "importlib.import_module",
+            return_value=fake_mod,
+        ):
+            from brain_mcp.dashboard.routes.onboarding import _discover_sources
+
+            results = _discover_sources()
+            assert len(results) == 1
+            assert results[0]["source_type"] == "test-mod"
+            assert results[0]["display_name"] == "Test Module"
+            assert results[0]["paths"][0]["count_hint"] == 100
+
+    def test_discover_well_known_paths(self, client, tmp_path):
+        """Discover should check well-known paths for ingesters without discover()."""
+        fake_base = tmp_path / "agents"
+        fake_base.mkdir()
+        (fake_base / "a.jsonl").write_text("{}")
+        (fake_base / "b.jsonl").write_text("{}")
+
+        with patch(
+            "brain_mcp.ingest.registry.discover_all",
+            return_value={},
+        ), patch(
+            "brain_mcp.dashboard.routes.onboarding._DISCOVER_MODULES",
+            {},
+        ), patch(
+            "brain_mcp.dashboard.routes.onboarding._WELL_KNOWN_PATHS",
+            [("clawdbot", "Clawdbot", fake_base, "*.jsonl")],
+        ):
+            from brain_mcp.dashboard.routes.onboarding import _discover_sources
+
+            results = _discover_sources()
+            assert len(results) == 1
+            assert results[0]["source_type"] == "clawdbot"
+            assert results[0]["display_name"] == "Clawdbot"
+            assert results[0]["paths"][0]["count_hint"] == 2
+
+    def test_discover_empty_when_nothing_found(self, client):
+        """Discover should return empty list if no sources exist."""
+        with patch(
+            "brain_mcp.ingest.registry.discover_all",
+            return_value={},
+        ), patch(
+            "brain_mcp.dashboard.routes.onboarding._DISCOVER_MODULES",
+            {},
+        ), patch(
+            "brain_mcp.dashboard.routes.onboarding._WELL_KNOWN_PATHS",
+            [],
+        ):
+            response = client.get("/api/onboarding/discover")
+            assert response.status_code == 200
+            assert response.json() == []
+
+    def test_discover_survives_import_errors(self, client):
+        """Discover should not crash if an ingester module fails to import."""
+        with patch(
+            "brain_mcp.ingest.registry.discover_all",
+            side_effect=ImportError("no registry"),
+        ), patch(
+            "brain_mcp.dashboard.routes.onboarding._DISCOVER_MODULES",
+            {"broken": ("nonexistent.module", "Broken")},
+        ), patch(
+            "brain_mcp.dashboard.routes.onboarding._WELL_KNOWN_PATHS",
+            [],
+        ):
+            response = client.get("/api/onboarding/discover")
+            assert response.status_code == 200
+            assert response.json() == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

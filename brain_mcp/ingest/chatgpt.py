@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
+from .base import BaseIngester
+from .registry import register
 from .schema import make_record, finalize_conversation
 
 
@@ -174,6 +176,37 @@ def ingest(source_path: str, **kwargs) -> list[dict]:
     except Exception as e:
         print(f"Error parsing ChatGPT export: {e}", file=sys.stderr)
         return []
+
+
+_ingest = ingest  # preserve module-level function reference
+
+
+@register
+class ChatGPTIngester(BaseIngester):
+    """ChatGPT conversation ingester (plugin)."""
+
+    @property
+    def source_type(self) -> str:
+        return "chatgpt"
+
+    @property
+    def display_name(self) -> str:
+        return "ChatGPT"
+
+    def discover(self) -> list[dict]:
+        candidates = [
+            "~/Downloads/chatgpt-export/conversations.json",
+            "~/.config/brain-mcp/imports/chatgpt/conversations.json",
+        ]
+        sources = []
+        for p in candidates:
+            path = Path(p).expanduser()
+            if path.exists():
+                sources.append({"path": str(path), "count_hint": 1, "size": path.stat().st_size})
+        return sources
+
+    def ingest(self, source_path: str) -> list[dict]:
+        return _ingest(source_path)
 
 
 if __name__ == "__main__":

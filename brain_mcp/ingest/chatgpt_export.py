@@ -20,6 +20,8 @@ from pathlib import Path
 from datetime import datetime
 from collections import deque
 
+from .base import BaseIngester
+from .registry import register
 from .schema import make_record, finalize_conversation
 
 
@@ -243,6 +245,29 @@ def ingest(source_path: str, **kwargs) -> list[dict]:
     except Exception as e:
         print(f"Error parsing ChatGPT export: {e}", file=sys.stderr)
         return []
+
+
+_ingest = ingest  # preserve module-level function reference
+_discover = discover  # preserve module-level function reference
+
+
+@register
+class ChatGPTExportIngester(BaseIngester):
+    """ChatGPT data export ingester (plugin)."""
+
+    @property
+    def source_type(self) -> str:
+        return "chatgpt-export"
+
+    @property
+    def display_name(self) -> str:
+        return "ChatGPT Export"
+
+    def discover(self) -> list[dict]:
+        return _discover()
+
+    def ingest(self, source_path: str) -> list[dict]:
+        return _ingest(source_path)
 
 
 if __name__ == "__main__":

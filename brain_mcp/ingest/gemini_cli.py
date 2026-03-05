@@ -30,6 +30,8 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
+from .base import BaseIngester
+from .registry import register
 from .schema import make_record, finalize_conversation
 
 
@@ -210,6 +212,29 @@ def ingest(source_path: str, **kwargs) -> list[dict]:
 
     print(f"Ingested {len(all_records)} messages from Gemini CLI ({errors} errors)")
     return all_records
+
+
+_ingest = ingest  # preserve module-level function reference
+_discover = discover  # preserve module-level function reference
+
+
+@register
+class GeminiCLIIngester(BaseIngester):
+    """Gemini CLI conversation ingester (plugin)."""
+
+    @property
+    def source_type(self) -> str:
+        return "gemini-cli"
+
+    @property
+    def display_name(self) -> str:
+        return "Gemini CLI"
+
+    def discover(self) -> list[dict]:
+        return _discover()
+
+    def ingest(self, source_path: str) -> list[dict]:
+        return _ingest(source_path)
 
 
 if __name__ == "__main__":

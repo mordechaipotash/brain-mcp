@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 
+from .base import BaseIngester
+from .registry import register
 from .schema import make_record, finalize_conversation
 
 
@@ -168,6 +170,34 @@ def ingest(source_path: str, **kwargs) -> list[dict]:
 
     print(f"Ingested {len(all_records)} messages from Claude Code ({errors} errors)")
     return all_records
+
+
+_ingest = ingest  # preserve module-level function reference
+
+
+@register
+class ClaudeCodeIngester(BaseIngester):
+    """Claude Code conversation ingester (plugin)."""
+
+    @property
+    def source_type(self) -> str:
+        return "claude-code"
+
+    @property
+    def display_name(self) -> str:
+        return "Claude Code"
+
+    def discover(self) -> list[dict]:
+        base = Path("~/.claude/projects").expanduser()
+        if not base.exists():
+            return []
+        files = list(base.glob("**/*.jsonl"))
+        if not files:
+            return []
+        return [{"path": str(base), "count_hint": len(files)}]
+
+    def ingest(self, source_path: str) -> list[dict]:
+        return _ingest(source_path)
 
 
 if __name__ == "__main__":
