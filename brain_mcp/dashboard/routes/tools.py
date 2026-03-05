@@ -286,6 +286,24 @@ def _status_icon(status: str) -> str:
     return {"ok": "✅", "degraded": "⚠️", "unavailable": "❌"}.get(status, "❓")
 
 
+def _check_tool_status() -> list[dict]:
+    """Get status of all tools. Used by settings health endpoint."""
+    available = _check_data_available()
+    results = []
+    for tool in TOOLS:
+        status = _tool_status(tool, available)
+        missing = [r for r in tool.get("requires", []) if not available.get(r, False)]
+        results.append({
+            "name": tool["name"],
+            "description": tool["description"],
+            "category": tool["category"],
+            "status": status,
+            "status_icon": _status_icon(status),
+            "missing": missing,
+        })
+    return results
+
+
 # ═══════════════════════════════════════════════════════════════════
 # LIST TOOLS
 # ═══════════════════════════════════════════════════════════════════

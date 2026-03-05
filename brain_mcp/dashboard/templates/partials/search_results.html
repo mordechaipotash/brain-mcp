@@ -28,9 +28,9 @@
 {% else %}
 <div class="search-meta">
     <small>
-        {{ total_results }} result{{ 's' if total_results != 1 else '' }} for
-        "<strong>{{ query }}</strong>"
-        <span class="search-speed">{{ mode }} · <span class="text-accent">{{ duration_ms }}ms</span></span>
+        <strong>{{ total_results }} result{{ 's' if total_results != 1 else '' }}</strong>
+        for "<strong>{{ query }}</strong>"
+        <span class="search-speed" style="opacity: 0.5; font-size: 0.8em;">{{ duration_ms }}ms</span>
     </small>
 </div>
 
@@ -47,7 +47,8 @@
             <span class="result-date">{{ result.date }}</span>
             {% if result.source %}
             <span class="result-source">
-                <kbd>{{ result.source }}</kbd>
+                {% set source_names = {"claude-code": "Claude Code", "clawdbot": "Clawdbot", "chatgpt": "ChatGPT", "cursor": "Cursor", "gemini-cli": "Gemini CLI", "claude-desktop": "Claude Desktop"} %}
+                <kbd>{{ source_names.get(result.source, result.source) }}</kbd>
             </span>
             {% endif %}
             {% if result.role %}

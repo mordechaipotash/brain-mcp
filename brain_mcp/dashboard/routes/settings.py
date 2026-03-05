@@ -474,3 +474,51 @@ async def settings_cards(request: Request):
         "embedding": embedding,
         "summarizer": summarizer,
     })
+
+
+@router.get("/health", response_class=HTMLResponse)
+async def system_health(request: Request):
+    """System health summary — tool status for Settings page."""
+    try:
+        from brain_mcp.dashboard.routes.tools import _check_tool_status, TOOLS
+        statuses = _check_tool_status()
+        total = len(TOOLS)
+        ok = sum(1 for s in statuses if s["status"] == "ok")
+        degraded = sum(1 for s in statuses if s["status"] == "degraded")
+        unavailable = sum(1 for s in statuses if s["status"] == "unavailable")
+        needs_attention = degraded + unavailable
+
+        if needs_attention == 0:
+            summary_html = f'<span style="color: #3fb950;">✅ All {total} tools working</span>'
+        else:
+            summary_html = f'<span style="color: #d29922;">⚠️ {needs_attention} tool{"s" if needs_attention != 1 else ""} need attention</span>'
+
+        detail_rows = []
+        for s in statuses:
+            if s["status"] != "ok":
+                detail_rows.append(
+                    f'<li>{s["status_icon"]} <strong>{s["name"]}</strong> — {s["description"]}'
+                    f'{" (needs: " + ", ".join(s.get("missing", [])) + ")" if s.get("missing") else ""}</li>'
+                )
+
+        details_html = ""
+        if detail_rows:
+            details_html = (
+                '<details style="margin-top: 0.5rem;">'
+                '<summary><small>Details</small></summary>'
+                '<ul>' + ''.join(detail_rows) + '</ul>'
+                '</details>'
+            )
+
+        return HTMLResponse(
+            f'<article><header><strong>🩺 System Health</strong></header>'
+            f'<p>{summary_html} <small>({ok} ok, {degraded} degraded, {unavailable} unavailable)</small></p>'
+            f'{details_html}'
+            f'<small><a href="/tools">View full tool status →</a></small>'
+            f'</article>'
+        )
+    except Exception as e:
+        return HTMLResponse(
+            f'<article><header><strong>🩺 System Health</strong></header>'
+            f'<p>Could not check tool status: {e}</p></article>'
+        )

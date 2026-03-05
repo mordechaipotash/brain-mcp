@@ -7,6 +7,14 @@
     <p>Configure your brain</p>
 </hgroup>
 
+<!-- System Health — tool status (moved from Tools page) -->
+<div id="system-health"
+     hx-get="/api/settings/health"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <article aria-busy="true">Checking system health...</article>
+</div>
+
 <!-- Settings sections — loaded via htmx -->
 <div id="settings-cards"
      hx-get="/api/settings/cards"

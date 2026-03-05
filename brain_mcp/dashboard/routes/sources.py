@@ -57,6 +57,16 @@ def _get_source_stats() -> list[dict]:
         "claude-desktop": "claude-desktop",
     }
 
+    # Human-friendly display names
+    DISPLAY_NAMES = {
+        "claude-code": "Claude Code",
+        "clawdbot": "Clawdbot",
+        "chatgpt": "ChatGPT",
+        "cursor": "Cursor",
+        "gemini-cli": "Gemini CLI",
+        "claude-desktop": "Claude Desktop",
+    }
+
     for i, src in enumerate(cfg.sources or []):
         src_type = src.type if hasattr(src, "type") else src.get("type", "")
         src_path = src.path if hasattr(src, "path") else src.get("path", "")
@@ -73,6 +83,7 @@ def _get_source_stats() -> list[dict]:
             "index": i,
             "type": src_type,
             "name": src_name,
+            "display_name": DISPLAY_NAMES.get(src_type, src_name),
             "path": src_path,
             "path_exists": path_exists,
             "messages": stats.get("messages", 0),
@@ -89,6 +100,7 @@ def _get_source_stats() -> list[dict]:
                 "index": -1,
                 "type": src_name,
                 "name": src_name,
+                "display_name": DISPLAY_NAMES.get(src_name, src_name),
                 "path": "(auto-detected from data)",
                 "path_exists": True,
                 "messages": stats.get("messages", 0),

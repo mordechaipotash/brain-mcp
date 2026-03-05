@@ -1,10 +1,10 @@
 {% if discovered %}
 <article>
-    <header><strong>🔍 Discovered Sources</strong></header>
+    <header><strong>🔍 Found Apps</strong></header>
     <table>
         <thead>
             <tr>
-                <th>Source</th>
+                <th>App</th>
                 <th>Type</th>
                 <th>Sessions</th>
                 <th>Path</th>
@@ -21,13 +21,13 @@
         {% endfor %}
         </tbody>
     </table>
-    <small>These sources were auto-detected on your machine.
-    Edit your <code>brain.yaml</code> or <code>config.toml</code> to add/remove sources,
-    then click "Sync All Now" to import.</small>
+    <small>These apps were auto-detected on your machine.
+    Edit your <code>brain.yaml</code> or <code>config.toml</code> to add/remove apps,
+    then click "Update All" to import.</small>
 </article>
 {% else %}
 <article>
-    <p>No additional conversation sources found on this machine.</p>
+    <p>No additional apps found on this machine.</p>
     <small>Supported: Claude Code, Clawdbot, Claude Desktop, ChatGPT exports</small>
 </article>
 {% endif %}

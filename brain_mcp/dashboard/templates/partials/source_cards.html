@@ -1,8 +1,8 @@
-<small>Last sync: {{ last_sync }}</small>
+<small>Updated {{ last_sync }}</small>
 
 {% if not sources %}
 <article>
-    <p>No sources configured. Click "Discover Sources" to auto-detect conversation sources on your machine.</p>
+    <p>No apps connected yet. Click "Discover Sources" to auto-detect conversation sources on your machine.</p>
 </article>
 {% endif %}
 
@@ -11,7 +11,7 @@
     <header>
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <strong>📁 {{ source.name }}</strong>
+                <strong>📁 {{ source.display_name }}</strong>
                 {% if source.path_exists %}
                 <span style="color: #3fb950;">✅</span>
                 {% else %}
@@ -28,14 +28,11 @@
 
     <div class="grid">
         <div>
-            <strong>{{ "{:,}".format(source.messages) }}</strong> messages
-        </div>
-        <div>
             <strong>{{ "{:,}".format(source.conversations) }}</strong> conversations
         </div>
         <div>
             {% if source.last_message %}
-            Last: <small>{{ source.last_message[:10] }}</small>
+            Updated <small>{{ source.last_message[:10] }}</small>
             {% else %}
             <small>No data yet</small>
             {% endif %}
@@ -49,7 +46,7 @@
                     hx-post="/api/sources/{{ source.index }}/sync"
                     hx-target="#source-sync-{{ source.index }}"
                     hx-swap="outerHTML">
-                Re-ingest
+                Update now
             </button>
             <span id="source-sync-{{ source.index }}"></span>
         </div>

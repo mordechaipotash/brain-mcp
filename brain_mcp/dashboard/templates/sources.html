@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Brain MCP — Sources{% endblock %}
+{% block title %}Brain MCP — Connected Apps{% endblock %}
 
 {% block content %}
 <hgroup>
-    <h1>📁 Sources</h1>
-    <p>Manage your conversation data sources</p>
+    <h1>📱 Connected Apps</h1>
+    <p>Your conversation sources</p>
 </hgroup>
 
 <!-- Action buttons -->
@@ -14,7 +14,7 @@
                 hx-get="/api/sources/discover"
                 hx-target="#discover-results"
                 hx-swap="innerHTML">
-            🔍 Discover Sources
+            🔍 Find Apps
         </button>
     </div>
     <div style="text-align: right;">
@@ -22,7 +22,7 @@
                 hx-target="#sync-progress"
                 hx-swap="innerHTML"
                 hx-indicator="#sync-spinner">
-            🔄 Sync All Now
+            🔄 Update All
         </button>
     </div>
 </div>

@@ -21,7 +21,7 @@
 
 <!-- Heatmap: 365-day activity calendar -->
 <article>
-    <header>🗓️ Activity Heatmap (last 365 days)</header>
+    <header>🗓️ Your Activity</header>
     <div id="heatmap-section"
          hx-get="/api/stats/heatmap.html?days=365"
          hx-trigger="load"
@@ -62,7 +62,7 @@
 <div class="grid">
     <!-- Sources health -->
     <article>
-        <header>🧩 Sources</header>
+        <header>📱 Connected Apps</header>
         <div id="sources-health"
              hx-get="/api/stats/sources"
              hx-trigger="load"
@@ -102,7 +102,7 @@
                     hx-post="/api/sources/sync-all"
                     hx-target="#sync-status"
                     hx-swap="innerHTML">
-                🔄 Sync Now
+                🔄 Update Now
             </button>
         </div>
     </div>
