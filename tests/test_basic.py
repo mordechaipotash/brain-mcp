@@ -420,12 +420,77 @@ class TestIngesters:
         assert records[0]["role"] == "user"
         assert "containerization" in records[0]["content"]
 
+    def test_cursor_transcript_ingester(self):
+        """Cursor agent transcript ingester parses sample JSONL correctly."""
+        from brain_mcp.ingest.cursor import parse_agent_transcript
+
+        jsonl_path = FIXTURES / "sample_cursor_transcript.jsonl"
+        records = parse_agent_transcript(jsonl_path)
+
+        assert len(records) == 4  # 2 user + 2 assistant
+        assert records[0]["source"] == "cursor"
+        assert records[0]["role"] == "user"
+        assert "virtual environment" in records[0]["content"]
+        assert records[0]["conversation_msg_count"] == 4
+
+    def test_chatgpt_export_ingester(self):
+        """ChatGPT export ingester parses tree-structured conversations.json."""
+        from brain_mcp.ingest.chatgpt_export import parse_export
+
+        json_path = FIXTURES / "sample_chatgpt_export.json"
+        records = parse_export(json_path)
+
+        assert len(records) == 4  # 2 user + 2 assistant
+        assert records[0]["source"] == "chatgpt-export"
+        assert "venv" in records[0]["content"] or "virtualenv" in records[0]["content"]
+        assert records[0]["conversation_msg_count"] == 4
+
+    def test_chatgpt_export_tree_walk(self):
+        """ChatGPT export correctly walks parent→children tree."""
+        from brain_mcp.ingest.chatgpt_export import _walk_tree
+
+        mapping = {
+            "root": {"message": None, "parent": None, "children": ["a"]},
+            "a": {"message": {}, "parent": "root", "children": ["b"]},
+            "b": {"message": {}, "parent": "a", "children": ["c"]},
+            "c": {"message": {}, "parent": "b", "children": []},
+        }
+        order = _walk_tree(mapping)
+        assert order == ["root", "a", "b", "c"]
+
+    def test_gemini_cli_ingester(self):
+        """Gemini CLI ingester parses session JSON correctly."""
+        from brain_mcp.ingest.gemini_cli import parse_session_file
+
+        json_path = FIXTURES / "sample_gemini_cli.json"
+        records = parse_session_file(json_path)
+
+        assert len(records) == 4  # 2 user + 2 gemini
+        assert records[0]["source"] == "gemini-cli"
+        assert records[0]["role"] == "user"
+        assert "file" in records[0]["content"].lower()
+        assert records[1]["role"] == "assistant"
+        assert records[1]["model"] == "gemini-2.5-flash"
+        assert records[0]["conversation_msg_count"] == 4
+
+    def test_gemini_cli_title_from_first_message(self):
+        """Gemini CLI uses first user message as conversation title."""
+        from brain_mcp.ingest.gemini_cli import parse_session_file
+
+        json_path = FIXTURES / "sample_gemini_cli.json"
+        records = parse_session_file(json_path)
+
+        assert records[0]["conversation_title"] == "How do I read a file in Python?"
+
     def test_ingester_schema_consistency(self):
         """All ingesters produce records matching the canonical schema."""
         from brain_mcp.ingest.schema import SCHEMA_COLUMNS
         from brain_mcp.ingest.clawdbot import parse_clawdbot_session
         from brain_mcp.ingest.chatgpt import parse_chatgpt_export
         from brain_mcp.ingest.generic import parse_generic_jsonl
+        from brain_mcp.ingest.cursor import parse_agent_transcript
+        from brain_mcp.ingest.chatgpt_export import parse_export as parse_chatgpt_export_file
+        from brain_mcp.ingest.gemini_cli import parse_session_file as parse_gemini
 
         sources = [
             parse_clawdbot_session(FIXTURES / "sample_clawdbot.jsonl"),
@@ -433,6 +498,9 @@ class TestIngesters:
             parse_generic_jsonl(
                 FIXTURES / "sample_generic.jsonl", "test"
             ),
+            parse_agent_transcript(FIXTURES / "sample_cursor_transcript.jsonl"),
+            parse_chatgpt_export_file(FIXTURES / "sample_chatgpt_export.json"),
+            parse_gemini(FIXTURES / "sample_gemini_cli.json"),
         ]
 
         for records in sources:

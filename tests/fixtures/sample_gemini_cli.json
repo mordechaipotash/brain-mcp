@@ -1,0 +1,49 @@
+{
+  "sessionId": "test-session-gemini-001",
+  "projectHash": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+  "startTime": "2026-01-30T05:15:52.768Z",
+  "lastUpdated": "2026-01-30T05:16:10.000Z",
+  "messages": [
+    {
+      "id": "msg-gem-001",
+      "timestamp": "2026-01-30T05:15:52.768Z",
+      "type": "user",
+      "content": "How do I read a file in Python?"
+    },
+    {
+      "id": "msg-gem-002",
+      "timestamp": "2026-01-30T05:15:55.000Z",
+      "type": "gemini",
+      "content": "You can read a file in Python using the built-in `open()` function:\n\n```python\nwith open('filename.txt', 'r') as f:\n    content = f.read()\n```\n\nThis uses a context manager to automatically close the file when done.",
+      "thoughts": [
+        {
+          "subject": "Simple File I/O",
+          "description": "Providing a basic example with context manager.",
+          "timestamp": "2026-01-30T05:15:54.000Z"
+        }
+      ],
+      "tokens": {
+        "input": 500,
+        "output": 80,
+        "cached": 0,
+        "thoughts": 20,
+        "tool": 0,
+        "total": 600
+      },
+      "model": "gemini-2.5-flash"
+    },
+    {
+      "id": "msg-gem-003",
+      "timestamp": "2026-01-30T05:16:05.000Z",
+      "type": "user",
+      "content": "What about reading line by line for large files?"
+    },
+    {
+      "id": "msg-gem-004",
+      "timestamp": "2026-01-30T05:16:10.000Z",
+      "type": "gemini",
+      "content": "For large files, iterate over the file object directly — this reads one line at a time and is memory efficient:\n\n```python\nwith open('large_file.txt', 'r') as f:\n    for line in f:\n        process(line)\n```",
+      "model": "gemini-2.5-flash"
+    }
+  ]
+}
