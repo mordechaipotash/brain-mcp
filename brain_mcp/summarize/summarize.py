@@ -106,6 +106,21 @@ def _call_openai(prompt: str, model: str, api_key: str) -> str:
     return response.choices[0].message.content
 
 
+def _call_gemini(prompt: str, model: str, api_key: str) -> str:
+    """Call Google Gemini via OpenAI-compatible endpoint."""
+    import openai
+    client = openai.OpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    )
+    response = client.chat.completions.create(
+        model=model,
+        max_tokens=2000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.choices[0].message.content
+
+
 def _call_ollama(prompt: str, model: str, **_) -> str:
     """Call local Ollama instance."""
     import requests
@@ -121,6 +136,7 @@ def _call_ollama(prompt: str, model: str, **_) -> str:
 PROVIDERS = {
     "anthropic": _call_anthropic,
     "openai": _call_openai,
+    "gemini": _call_gemini,
     "local": _call_ollama,
     "ollama": _call_ollama,
 }

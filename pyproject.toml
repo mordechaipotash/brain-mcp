@@ -50,3 +50,6 @@ Repository = "https://github.com/mordechaipotash/brain-mcp"
 
 [tool.setuptools.packages.find]
 include = ["brain_mcp*"]
+
+[tool.setuptools.package-data]
+"brain_mcp.dashboard" = ["templates/**/*.html", "static/**/*"]
