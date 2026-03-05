@@ -23,8 +23,8 @@
     <header>
         <div class="result-header">
             {% if result.similarity is not none %}
-            <span class="{{ result.similarity_class }}" title="Similarity: {{ result.similarity }}">
-                {{ result.similarity_dot }} {{ result.similarity }}
+            <span class="match-label {{ result.match_class }}">
+                {{ result.match_label }}
             </span>
             {% endif %}
             <span class="result-date">{{ result.date }}</span>

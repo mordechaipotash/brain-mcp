@@ -37,6 +37,18 @@ def _get_summary_count() -> int:
         return 0
 
 
+def _get_conversation_count() -> int:
+    """Get count of unique conversations."""
+    try:
+        from brain_mcp.server.db import get_conversations
+        con = get_conversations()
+        return con.execute(
+            "SELECT COUNT(DISTINCT conversation_id) FROM conversations"
+        ).fetchone()[0]
+    except Exception:
+        return 0
+
+
 def _get_tools_status() -> tuple[int, int]:
     """Get (tools_ok, tools_total) count."""
     # All 25 tools register; we check if data exists for them to work
@@ -52,6 +64,7 @@ async def stats_overview(request: Request):
     messages = _get_message_count()
     embedded = _get_embedded_count()
     summaries = _get_summary_count()
+    conversations = _get_conversation_count()
     tools_ok, tools_total = _get_tools_status()
 
     return templates.TemplateResponse("partials/stats_cards.html", {
@@ -59,6 +72,7 @@ async def stats_overview(request: Request):
         "messages": messages,
         "embedded": embedded,
         "summaries": summaries,
+        "conversations": conversations,
         "tools_ok": tools_ok,
         "tools_total": tools_total,
     })
@@ -70,12 +84,14 @@ async def stats_overview_json():
     messages = _get_message_count()
     embedded = _get_embedded_count()
     summaries = _get_summary_count()
+    conversations = _get_conversation_count()
     tools_ok, tools_total = _get_tools_status()
 
     return {
         "messages": messages,
         "embedded": embedded,
         "summaries": summaries,
+        "conversations": conversations,
         "tools_ok": tools_ok,
         "tools_total": tools_total,
     }

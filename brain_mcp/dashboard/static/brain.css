@@ -1,139 +1,542 @@
-/* brain-mcp dashboard — custom overrides for Pico CSS */
+/* brain-mcp dashboard — Deep Space Neural theme */
 
-/* Nav active link */
+/* ═══════════════════════════════════════════════════════════════
+   COLOR SYSTEM
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg-deepest: #0a0a0f;
+  --bg-surface: #12121a;
+  --bg-elevated: #1a1a2e;
+  --border-subtle: #1e1e32;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888a8;
+  --accent: #6366f1;
+  --accent-bright: #818cf8;
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --cyan: #06b6d4;
+
+  /* Glow effects */
+  --glow-accent: 0 0 20px rgba(99, 102, 241, 0.15);
+  --glow-accent-hover: 0 0 30px rgba(99, 102, 241, 0.25);
+  --glow-green: 0 0 20px rgba(34, 197, 94, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PICO CSS OVERRIDES — Dark theme
+   ═══════════════════════════════════════════════════════════════ */
+
+html[data-theme="dark"] {
+  --pico-background-color: var(--bg-deepest);
+  --pico-color: var(--text-primary);
+  --pico-muted-color: var(--text-secondary);
+  --pico-primary: var(--accent);
+  --pico-primary-hover: var(--accent-bright);
+  --pico-primary-focus: rgba(99, 102, 241, 0.25);
+  --pico-primary-color: var(--accent-bright);
+  --pico-card-background-color: var(--bg-surface);
+  --pico-card-sectioning-background-color: var(--bg-elevated);
+  --pico-muted-border-color: var(--border-subtle);
+  --pico-secondary: var(--text-secondary);
+  --pico-secondary-hover: var(--text-primary);
+  --pico-form-element-background-color: var(--bg-surface);
+  --pico-form-element-border-color: var(--border-subtle);
+  --pico-form-element-focus-color: var(--accent);
+}
+
+body {
+  background: var(--bg-deepest);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════════════════════════════ */
+
+nav.container {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0.75rem 1.5rem;
+  margin-bottom: 2rem;
+}
+
+nav a {
+  color: var(--text-secondary) !important;
+  text-decoration: none;
+  transition: color 0.2s, text-shadow 0.2s;
+}
+
+nav a:hover {
+  color: var(--accent-bright) !important;
+}
+
 nav a.active {
-    color: var(--pico-primary-color);
-    font-weight: bold;
+  color: var(--accent-bright) !important;
+  font-weight: bold;
+  text-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
 }
 
-/* Stats cards */
+nav li:first-child a {
+  color: var(--text-primary) !important;
+  font-size: 1.1rem;
+  letter-spacing: -0.01em;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FROSTED GLASS CARDS
+   ═══════════════════════════════════════════════════════════════ */
+
+article {
+  background: rgba(18, 18, 26, 0.7) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 12px !important;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+article:hover {
+  border-color: rgba(99, 102, 241, 0.3) !important;
+  box-shadow: var(--glow-accent);
+}
+
+article header {
+  border-bottom-color: var(--border-subtle) !important;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HERO — Big number display
+   ═══════════════════════════════════════════════════════════════ */
+
+.hero-section {
+  text-align: center;
+  padding: 2rem 0 1rem;
+}
+
+.hero-number {
+  font-size: 4rem;
+  font-weight: 800;
+  color: var(--accent-bright);
+  line-height: 1;
+  text-shadow: 0 0 40px rgba(99, 102, 241, 0.3);
+  letter-spacing: -0.02em;
+}
+
+.hero-label {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin-top: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STAT CARDS
+   ═══════════════════════════════════════════════════════════════ */
+
+.stat-card {
+  text-align: center;
+  padding: 1.5rem 1rem !important;
+}
+
+.stat-card hgroup h2,
 article hgroup h2 {
-    margin-bottom: 0;
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: var(--pico-primary-color);
+  margin-bottom: 0;
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--accent-bright);
+  text-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
 }
+
+.stat-card hgroup p,
 article hgroup p {
-    margin-top: 0.25rem;
-    color: var(--pico-muted-color);
-    font-size: 0.9rem;
+  margin-top: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-/* Sparkline bar chart */
+.stat-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SEARCH BAR
+   ═══════════════════════════════════════════════════════════════ */
+
+.quick-search {
+  max-width: 600px;
+  margin: 1.5rem auto;
+  position: relative;
+}
+
+.quick-search input[type="search"] {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  width: 100%;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.quick-search input[type="search"]:focus {
+  border-color: var(--accent);
+  box-shadow: var(--glow-accent);
+  outline: none;
+}
+
+.quick-search input[type="search"]::placeholder {
+  color: var(--text-secondary);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TOPICS LIST
+   ═══════════════════════════════════════════════════════════════ */
+
+.topics-section {
+  margin-top: 1.5rem;
+}
+
+.topics-section h3 {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1rem;
+}
+
+.topics-list {
+  list-style: none;
+  padding: 0;
+}
+
+.topics-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.topics-list li:hover {
+  background: var(--bg-elevated);
+}
+
+.topics-list .topic-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.topics-list .topic-count {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SPARKLINE CHART
+   ═══════════════════════════════════════════════════════════════ */
+
 .sparkline {
-    display: flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 64px;
-    padding: 4px 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 64px;
+  padding: 4px 0;
 }
+
 .sparkline .bar {
-    flex: 1;
-    min-width: 3px;
-    max-width: 12px;
-    background: var(--pico-primary-color);
-    border-radius: 2px 2px 0 0;
-    opacity: 0.8;
-    transition: opacity 0.2s;
+  flex: 1;
+  min-width: 3px;
+  max-width: 12px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+  opacity: 0.7;
+  transition: opacity 0.2s, background 0.2s;
 }
+
 .sparkline .bar:hover {
-    opacity: 1;
+  opacity: 1;
+  background: var(--accent-bright);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
 }
 
-/* Search results similarity dots */
-.sim-high { color: #3fb950; }
-.sim-med { color: #d29922; }
-.sim-low { color: #f85149; }
+/* ═══════════════════════════════════════════════════════════════
+   SEARCH RESULTS
+   ═══════════════════════════════════════════════════════════════ */
 
-/* Footer */
-footer {
-    margin-top: 3rem;
-    padding: 1rem 0;
-    text-align: center;
-    border-top: 1px solid var(--pico-muted-border-color);
+/* Similarity labels */
+.sim-high {
+  color: var(--green);
+  font-weight: 600;
 }
 
-/* Loading states */
-[aria-busy="true"] {
-    min-height: 60px;
+.sim-med {
+  color: var(--amber);
+  font-weight: 500;
 }
 
-/* Search result cards */
+.sim-low {
+  color: var(--text-secondary);
+}
+
+.match-label {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.match-best {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--green);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.match-good {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.match-related {
+  background: rgba(136, 136, 168, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
 .search-result {
-    margin-bottom: 1rem;
+  margin-bottom: 1rem;
 }
+
 .search-result header {
-    padding-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
 }
+
 .result-header {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    align-items: center;
-    margin-bottom: 0.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.25rem;
 }
+
 .result-date, .result-source, .result-role {
-    font-size: 0.85rem;
-    color: var(--pico-muted-color);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
 }
+
 .search-result footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 0.5rem;
 }
+
 .search-result p {
-    white-space: pre-wrap;
-    word-break: break-word;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
 }
 
-/* Conversation thread */
+/* ═══════════════════════════════════════════════════════════════
+   CONVERSATION THREAD
+   ═══════════════════════════════════════════════════════════════ */
+
 .conversation-thread {
-    margin-top: 1rem;
+  margin-top: 1rem;
 }
+
 .message {
-    margin-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
 }
+
 .message-user {
-    border-left: 3px solid var(--pico-primary-color);
+  border-left: 3px solid var(--accent);
 }
+
 .message-assistant {
-    border-left: 3px solid var(--pico-muted-color);
-    opacity: 0.9;
+  border-left: 3px solid var(--border-subtle);
+  opacity: 0.9;
 }
+
 .message-content {
-    white-space: pre-wrap;
-    word-break: break-word;
-    font-size: 0.95rem;
-    line-height: 1.6;
-    max-height: 500px;
-    overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
-/* Search mode fieldset — inline radio buttons */
+/* ═══════════════════════════════════════════════════════════════
+   FORM ELEMENTS
+   ═══════════════════════════════════════════════════════════════ */
+
 #search-form fieldset {
-    border: none;
-    padding: 0;
-    display: flex;
-    gap: 1.5rem;
-    align-items: center;
-    flex-wrap: wrap;
-}
-#search-form fieldset legend {
-    margin-right: 0.5rem;
+  border: none;
+  padding: 0;
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
-/* Responsive grid tweaks */
+#search-form fieldset legend {
+  margin-right: 0.5rem;
+}
+
+input, select, textarea {
+  background: var(--bg-surface) !important;
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent) !important;
+  box-shadow: var(--glow-accent) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════════════════════════════ */
+
+button, [role="button"] {
+  transition: box-shadow 0.3s, transform 0.15s;
+}
+
+button:hover, [role="button"]:hover {
+  box-shadow: var(--glow-accent-hover);
+}
+
+button:active, [role="button"]:active {
+  transform: scale(0.98);
+}
+
+button.outline, [role="button"].outline {
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+button.outline:hover, [role="button"].outline:hover {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KBD & CODE
+   ═══════════════════════════════════════════════════════════════ */
+
+kbd {
+  background: var(--bg-elevated);
+  border-color: var(--border-subtle);
+  color: var(--cyan);
+  font-size: 0.8rem;
+}
+
+code {
+  background: var(--bg-elevated);
+  color: var(--cyan);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DETAILS/SUMMARY
+   ═══════════════════════════════════════════════════════════════ */
+
+details {
+  border-color: var(--border-subtle);
+}
+
+summary {
+  color: var(--text-secondary);
+}
+
+summary:hover {
+  color: var(--accent-bright);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════════════════════════ */
+
+footer {
+  margin-top: 3rem;
+  padding: 1rem 0;
+  text-align: center;
+  border-top: 1px solid var(--border-subtle);
+}
+
+footer small, footer a {
+  color: var(--text-secondary);
+}
+
+footer a:hover {
+  color: var(--accent-bright);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LOADING STATES
+   ═══════════════════════════════════════════════════════════════ */
+
+[aria-busy="true"] {
+  min-height: 60px;
+}
+
+progress {
+  --pico-progress-color: var(--accent);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   UTILITY CLASSES
+   ═══════════════════════════════════════════════════════════════ */
+
+.text-green { color: var(--green); }
+.text-amber { color: var(--amber); }
+.text-red { color: var(--red); }
+.text-cyan { color: var(--cyan); }
+.text-accent { color: var(--accent-bright); }
+.text-muted { color: var(--text-secondary); }
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════════ */
+
 @media (max-width: 768px) {
-    article hgroup h2 {
-        font-size: 1.8rem;
-    }
-    .sparkline {
-        height: 40px;
-    }
-    .search-result footer {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.5rem;
-    }
+  .hero-number {
+    font-size: 2.5rem;
+  }
+
+  .stat-card hgroup h2,
+  article hgroup h2 {
+    font-size: 1.8rem;
+  }
+
+  .sparkline {
+    height: 40px;
+  }
+
+  .search-result footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  nav ul:last-child {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
 }

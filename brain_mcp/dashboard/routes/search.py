@@ -68,6 +68,28 @@ def _similarity_dot(score: float) -> str:
     return "🔴"
 
 
+def _match_label(score: float) -> str:
+    """Return human-readable match label for similarity score."""
+    if score > 0.90:
+        return "Best match"
+    elif score >= 0.70:
+        return "Good match"
+    elif score >= 0.50:
+        return "Related"
+    return "Weak match"
+
+
+def _match_class(score: float) -> str:
+    """Return CSS class for match label styling."""
+    if score > 0.90:
+        return "match-best"
+    elif score >= 0.70:
+        return "match-good"
+    elif score >= 0.50:
+        return "match-related"
+    return "match-related"
+
+
 def _truncate(text: str, max_len: int = 250) -> str:
     """Truncate text to max length with ellipsis."""
     if not text:
@@ -210,6 +232,8 @@ def _search_semantic(
             "similarity": round(sim, 3),
             "similarity_class": _similarity_class(sim),
             "similarity_dot": _similarity_dot(sim),
+            "match_label": _match_label(sim),
+            "match_class": _match_class(sim),
             "content": content,
             "content_preview": _truncate(content),
             "conversation_id": conv_id,
@@ -277,6 +301,8 @@ def _search_keyword(
             "similarity": None,
             "similarity_class": "",
             "similarity_dot": "",
+            "match_label": "",
+            "match_class": "",
             "content": content,
             "content_preview": _truncate(content),
             "conversation_id": conv_id,
@@ -340,6 +366,8 @@ def _search_summaries(
             "similarity": round(sim, 3),
             "similarity_class": _similarity_class(sim),
             "similarity_dot": _similarity_dot(sim),
+            "match_label": _match_label(sim),
+            "match_class": _match_class(sim),
             "content": summary,
             "content_preview": _truncate(summary, 300),
             "conversation_id": conv_id,

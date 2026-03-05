@@ -2,15 +2,21 @@
 {% block title %}Brain MCP — Dashboard{% endblock %}
 
 {% block content %}
-<h1>🧠 Brain MCP</h1>
-
-<!-- Stats cards — loaded via htmx on page load -->
-<div class="grid" id="stats-cards"
+<!-- Hero: big conversation count, loaded via htmx -->
+<div class="hero-section" id="hero-stats"
      hx-get="/api/stats/overview"
      hx-trigger="load"
-     hx-target="#stats-cards"
+     hx-target="#hero-stats"
      hx-swap="innerHTML">
-    <article aria-busy="true">Loading stats...</article>
+    <article aria-busy="true" style="border:none;background:transparent !important;">Loading...</article>
+</div>
+
+<!-- Quick search bar -->
+<div class="quick-search">
+    <input type="search"
+           placeholder="Search your brain..."
+           onkeyup="debounceSearch(this, '/api/search?mode=semantic')"
+           aria-label="Quick search">
 </div>
 
 <!-- Activity sparkline -->
@@ -25,7 +31,7 @@
     </div>
 </article>
 
-<!-- Two-column layout: Sources + Open Threads -->
+<!-- Two-column layout: Sources + Top Topics -->
 <div class="grid">
     <!-- Sources health -->
     <article>
@@ -39,9 +45,9 @@
         </div>
     </article>
 
-    <!-- Open threads -->
+    <!-- Top Topics -->
     <article>
-        <header>📌 Open Threads</header>
+        <header>🏷️ Your Top Topics</header>
         <div id="open-threads"
              hx-get="/api/stats/domains"
              hx-trigger="load"

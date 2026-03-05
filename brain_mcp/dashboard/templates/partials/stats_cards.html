@@ -1,25 +1,31 @@
-<!-- Stats cards partial — returned by /api/stats/overview -->
-<article>
-    <hgroup>
-        <h2>{{ "{:,}".format(messages) }}</h2>
-        <p>Messages</p>
-    </hgroup>
-</article>
-<article>
-    <hgroup>
-        <h2>{{ "{:,}".format(embedded) }}</h2>
-        <p>Embedded</p>
-    </hgroup>
-</article>
-<article>
-    <hgroup>
-        <h2>{{ "{:,}".format(summaries) }}</h2>
-        <p>Summaries</p>
-    </hgroup>
-</article>
-<article>
-    <hgroup>
-        <h2>{{ tools_ok }}/{{ tools_total }}</h2>
-        <p>Tools OK</p>
-    </hgroup>
-</article>
+<!-- Stats partial — returned by /api/stats/overview -->
+<!-- Hero number -->
+<div class="hero-section">
+    <div class="hero-number" data-counter="{{ conversations }}">{{ "{:,}".format(conversations) }}</div>
+    <div class="hero-label">Conversations</div>
+</div>
+
+<!-- Small stat cards -->
+<div class="grid">
+    <article class="stat-card">
+        <hgroup>
+            <span class="stat-icon">💬</span>
+            <h2 data-counter="{{ messages }}">{{ "{:,}".format(messages) }}</h2>
+            <p>Messages</p>
+        </hgroup>
+    </article>
+    <article class="stat-card">
+        <hgroup>
+            <span class="stat-icon">🔮</span>
+            <h2 data-counter="{{ embedded }}">{{ "{:,}".format(embedded) }}</h2>
+            <p>Embedded</p>
+        </hgroup>
+    </article>
+    <article class="stat-card">
+        <hgroup>
+            <span class="stat-icon">📊</span>
+            <h2 data-counter="{{ summaries }}">{{ "{:,}".format(summaries) }}</h2>
+            <p>Summaries</p>
+        </hgroup>
+    </article>
+</div>

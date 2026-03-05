@@ -7,7 +7,7 @@
 
     <!-- Vendored: Pico CSS (classless, dark mode by default) -->
     <link rel="stylesheet" href="/static/pico.min.css">
-    <!-- Custom overrides -->
+    <!-- Deep Space Neural theme -->
     <link rel="stylesheet" href="/static/brain.css">
 
     <!-- Vendored: htmx 2.0 (14KB, handles all interactivity) -->
@@ -23,10 +23,9 @@
             <li><a href="/"><strong>🧠 Brain MCP</strong></a></li>
         </ul>
         <ul>
-            <li><a href="/" {% if active_page == 'home' %}class="active"{% endif %}>Dashboard</a></li>
+            <li><a href="/" {% if active_page == 'home' %}class="active"{% endif %}>Home</a></li>
             <li><a href="/search" {% if active_page == 'search' %}class="active"{% endif %}>Search</a></li>
             <li><a href="/sources" {% if active_page == 'sources' %}class="active"{% endif %}>Sources</a></li>
-            <li><a href="/tools" {% if active_page == 'tools' %}class="active"{% endif %}>Tools</a></li>
             <li><a href="/settings" {% if active_page == 'settings' %}class="active"{% endif %}>Settings</a></li>
         </ul>
     </nav>
