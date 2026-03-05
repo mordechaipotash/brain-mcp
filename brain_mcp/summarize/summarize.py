@@ -121,6 +121,21 @@ def _call_gemini(prompt: str, model: str, api_key: str) -> str:
     return response.choices[0].message.content
 
 
+def _call_openrouter(prompt: str, model: str, api_key: str) -> str:
+    """Call any model via OpenRouter (OpenAI-compatible)."""
+    import openai
+    client = openai.OpenAI(
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
+    )
+    response = client.chat.completions.create(
+        model=model,
+        max_tokens=2000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.choices[0].message.content
+
+
 def _call_ollama(prompt: str, model: str, **_) -> str:
     """Call local Ollama instance."""
     import requests
@@ -137,6 +152,7 @@ PROVIDERS = {
     "anthropic": _call_anthropic,
     "openai": _call_openai,
     "gemini": _call_gemini,
+    "openrouter": _call_openrouter,
     "local": _call_ollama,
     "ollama": _call_ollama,
 }
