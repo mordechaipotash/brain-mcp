@@ -145,39 +145,13 @@ Open questions: 12 | Decisions made: 8
 
 ## How It Works
 
-```mermaid
-graph TD
-    subgraph SOURCES["📥 Your Conversations (already on your machine)"]
-        CC["Claude Code sessions"]
-        CG["ChatGPT exports"]
-        CB["Clawdbot sessions"]
-        GJ["Generic JSONL"]
-    end
+**Your conversations → Your brain → Your AI**
 
-    INIT["brain-mcp init --full"]
+1. **You already have the data.** Claude Code sessions, ChatGPT exports, Claude Desktop — they're files on your machine.
+2. **brain-mcp indexes them.** Keyword search works instantly. Add embeddings for semantic search.
+3. **Your AI gets 25 new tools.** Ask Claude "where did I leave off?" and it searches your brain. 12ms.
 
-    subgraph DB["💾 Local Storage"]
-        DDB["DuckDB (SQL)<br/>Full-text search"]
-        LDB["LanceDB (768d vectors)<br/>Semantic search"]
-        SUM["Structured summaries"]
-    end
-
-    TOOLS["🧠 25 MCP Tools"]
-
-    subgraph CLIENTS["💬 Your AI Assistant"]
-        CLA["Claude"]
-        CUR["Cursor"]
-        WS["Windsurf"]
-    end
-
-    SOURCES --> INIT --> DB --> TOOLS --> CLIENTS
-
-    style SOURCES fill:#f8f9fa,stroke:#d0d7de,color:#1a1a1a
-    style DB fill:#fff8e1,stroke:#d29922,color:#1a1a1a
-    style CLIENTS fill:#f0fff4,stroke:#3fb950,color:#1a1a1a
-```
-
-All data stays on your machine. Embedding model runs locally (nomic-v1.5 on Apple Silicon). **No cloud. No API costs for core operations.**
+All data stays on your machine. Embedding model runs locally. **No cloud. No API costs.**
 
 ---
 
