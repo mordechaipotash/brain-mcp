@@ -14,7 +14,9 @@
   <img src="assets/demo-autoplay.gif" alt="brain-mcp Demo" width="640"/>
 </p>
 
-<p align="center"><i>⬆️ Auto-playing preview — <a href="https://github.com/user-attachments/assets/90220a62-2d4e-4dfe-aaa3-2a04172b47b8">click here for full video with audio</a></i></p>
+<p align="center"><i>⬆️ Auto-playing preview — <a href="https://github.com/user-attachments/assets/1571c120-2c69-4a92-baa1-76c512485064">click here for full video with audio</a></i></p>
+
+
 
 <p align="center">
   <b><a href="https://brainmcp.dev">📚 Documentation</a></b> · <b><a href="https://brainmcp.dev/docs/quickstart">🚀 Quickstart</a></b> · <b><a href="https://brainmcp.dev/faq">❓ FAQ</a></b> · <b><a href="https://brainmcp.dev/docs/tools">🔧 All 25 Tools</a></b>
