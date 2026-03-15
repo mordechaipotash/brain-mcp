@@ -2,6 +2,8 @@
 
 **You've had thousands of AI conversations. You can't search any of them.**
 
+*Other AI memory tools remember facts. brain-mcp remembers how you think.*
+
 [![Docs](https://img.shields.io/badge/docs-brainmcp.dev-cyan?style=flat-square&logo=readthedocs&logoColor=white)](https://brainmcp.dev)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![MCP](https://img.shields.io/badge/MCP-compatible-green?style=flat-square)](https://modelcontextprotocol.io)
@@ -97,6 +99,25 @@ That's it. No special syntax. Just talk to your AI and it searches your brain wh
 | "What do I actually think about AI?" | Synthesizes YOUR views from 31 past conversations into one answer |
 
 Works for **researchers, writers, students, founders, developers** — anyone who thinks with AI.
+
+---
+
+## How It's Different
+
+Most AI memory tools are key-value stores — they remember facts. brain-mcp is a **cognitive prosthetic** — it remembers how you think.
+
+| Feature | Key-value memory tools | brain-mcp |
+|---------|----------------------|-----------|
+| Store facts | ✅ | ✅ |
+| Semantic search | Some | ✅ |
+| Multi-source ingest | ❌ | ✅ (ChatGPT, Claude, Cursor, Gemini) |
+| Resume where you left off | ❌ | ✅ `tunnel_state` |
+| Track idea evolution | ❌ | ✅ `thinking_trajectory` |
+| Quantify context switching | ❌ | ✅ `switching_cost` |
+| Synthesize your views | ❌ | ✅ `what_do_i_think` |
+| Check decisions vs principles | ❌ | ✅ `alignment_check` |
+| Find forgotten topics | ❌ | ✅ `dormant_contexts` |
+| Time travel to any month | ❌ | ✅ `what_was_i_thinking` |
 
 ---
 
