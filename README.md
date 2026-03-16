@@ -11,7 +11,6 @@
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/brain-mcp?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/brain-mcp/)
 [![CI](https://img.shields.io/github/actions/workflow/status/mordechaipotash/brain-mcp/test.yml?style=flat-square&label=tests)](https://github.com/mordechaipotash/brain-mcp/actions)
-[![Assay Score](https://assay.tools/badge/mordechaipotash-brain-mcp)](https://assay.tools/packages/mordechaipotash-brain-mcp)
 [![Glama](https://glama.ai/mcp/servers/mordechaipotash/brain-mcp/badges/score.svg)](https://glama.ai/mcp/servers/mordechaipotash/brain-mcp)
 
 <p align="center">
