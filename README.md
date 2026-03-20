@@ -205,6 +205,15 @@ Auto-detected and imported during setup:
 
 All data stays on your machine. Embedding model runs locally. **No cloud. No API costs. No accounts.**
 
+### Sync
+
+New conversations are picked up **automatically** — no cron jobs, no manual sync.
+
+- **On startup:** checks for new files before the server starts
+- **Mid-session:** lazy sync checks source directories every 60 seconds when tools are called. If new files exist, re-ingests in the background before serving the query. Zero background threads, zero watchers — just mtime checks (~0.1ms overhead).
+
+You can also sync manually: `brain-mcp sync`
+
 ---
 
 ## 🔒 Privacy

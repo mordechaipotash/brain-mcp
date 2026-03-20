@@ -5,10 +5,15 @@ Lazy-loaded, cached connections to DuckDB (parquet queries),
 LanceDB (vector search), and the embedding model.
 
 All connections read paths from config — no hardcoded paths.
+
+Lazy sync: on each tool call, checks if source files changed since last
+ingest. If so, re-ingests before serving the query. Zero background threads,
+zero watchers — just mtime checks (~0.1ms overhead).
 """
 
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -30,6 +35,11 @@ _summaries_db: Optional[duckdb.DuckDBPyConnection] = None
 _github_db: Optional[duckdb.DuckDBPyConnection] = None
 _markdown_db: Optional[duckdb.DuckDBPyConnection] = None
 _principles_data = None
+
+# Lazy sync state
+_last_sync_check: float = 0.0          # time.monotonic() of last mtime scan
+_SYNC_CHECK_INTERVAL: float = 60.0     # seconds between mtime scans (1 min)
+_sync_lock = False                      # prevent re-entrant sync
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -62,12 +72,89 @@ def get_embedding(text: str) -> Optional[list[float]]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# LAZY SYNC — check source mtimes, re-ingest if stale
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _check_and_sync():
+    """Check if source files changed since last ingest. If so, re-ingest.
+
+    Called before every query via get_conversations(). Costs ~0.1ms when
+    nothing changed (just stat() calls). Skips if checked within the last
+    _SYNC_CHECK_INTERVAL seconds.
+    """
+    global _last_sync_check, _sync_lock, _conversations_db, _lance_db
+
+    now = time.monotonic()
+    if now - _last_sync_check < _SYNC_CHECK_INTERVAL:
+        return  # checked recently
+    if _sync_lock:
+        return  # already syncing
+
+    _last_sync_check = now
+
+    cfg = get_config()
+    if not cfg.parquet_path.exists():
+        return  # no data yet — nothing to sync against
+
+    parquet_mtime = cfg.parquet_path.stat().st_mtime
+
+    # Scan source dirs for files newer than parquet
+    new_count = 0
+    for source in (cfg.sources or []):
+        source_path = Path(source.path if hasattr(source, 'path') else source.get("path", ""))
+        if not source_path.exists():
+            continue
+        for f in source_path.rglob("*.jsonl"):
+            try:
+                if f.stat().st_mtime > parquet_mtime:
+                    new_count += 1
+                    if new_count >= 2:
+                        break  # don't need exact count, just > 0
+            except OSError:
+                continue
+        if new_count >= 2:
+            break
+
+    if new_count == 0:
+        return  # nothing new
+
+    # New data found — re-ingest
+    _sync_lock = True
+    try:
+        print(f"🔄 Lazy sync: {new_count}+ new file(s), re-ingesting...", file=sys.stderr, flush=True)
+        from brain_mcp.ingest import run_all_ingesters
+        run_all_ingesters(cfg)
+        print(f"✅ Lazy sync complete.", file=sys.stderr, flush=True)
+
+        # Invalidate cached connections so they re-read fresh data
+        if _conversations_db is not None:
+            try:
+                _conversations_db.close()
+            except Exception:
+                pass
+            _conversations_db = None
+        _lance_db = None  # LanceDB will reconnect on next access
+    except Exception as e:
+        print(f"⚠️  Lazy sync failed: {e}", file=sys.stderr, flush=True)
+    finally:
+        _sync_lock = False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # CONVERSATIONS (DuckDB over parquet)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def get_conversations() -> duckdb.DuckDBPyConnection:
-    """Get cached DuckDB connection with conversations view."""
+    """Get cached DuckDB connection with conversations view.
+
+    Automatically checks for new source data and re-ingests if needed
+    (lazy sync — no background threads, just mtime checks).
+    """
     global _conversations_db
+
+    # Lazy sync: check for new files before serving
+    _check_and_sync()
+
     cfg = get_config()
     if _conversations_db is None:
         if not cfg.parquet_path.exists():
