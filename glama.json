@@ -1,7 +1,6 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
-  "maintainers": ["mordechaipotash"],
-  "name": "brain-mcp",
-  "description": "Cognitive prosthetic for AI agents — indexes conversation history into searchable embeddings with 25 MCP tools",
-  "repository": "https://github.com/mordechaipotash/brain-mcp"
+  "maintainers": [
+    "mordechaipotash"
+  ]
 }
