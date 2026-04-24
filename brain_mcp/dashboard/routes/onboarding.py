@@ -144,11 +144,11 @@ _WELL_KNOWN_PATHS = [
 # Add Claude Desktop with platform-aware path
 try:
     from brain_mcp.platform import claude_desktop_conversations
-    _WELL_KNOWN.append(
+    _WELL_KNOWN_PATHS.append(
         ("claude-desktop", "Claude Desktop", claude_desktop_conversations(), "*.jsonl")
     )
 except Exception:
-    _WELL_KNOWN.append(
+    _WELL_KNOWN_PATHS.append(
         ("claude-desktop", "Claude Desktop", Path.home() / "Library" / "Application Support" / "Claude" / "chat_conversations", "*.jsonl")
     )
 
