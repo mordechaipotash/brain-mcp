@@ -122,8 +122,7 @@ async def search(
     templates = request.app.state.templates
 
     if not q.strip():
-        return templates.TemplateResponse("partials/search_results.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "partials/search_results.html", {
             "results": [],
             "query": "",
             "mode": mode,
@@ -144,8 +143,7 @@ async def search(
             results = _search_summaries(q, source, date_from, date_to, limit, offset)
     except Exception as e:
         duration_ms = int((time.time() - start) * 1000)
-        return templates.TemplateResponse("partials/search_results.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "partials/search_results.html", {
             "results": [],
             "query": q,
             "mode": mode,
@@ -160,8 +158,7 @@ async def search(
     # Save to search history
     _save_search(q, mode, len(results), duration_ms)
 
-    return templates.TemplateResponse("partials/search_results.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/search_results.html", {
         "results": results,
         "query": q,
         "mode": mode,
@@ -421,8 +418,7 @@ async def search_recent(request: Request, limit: int = Query(10, ge=1, le=20)):
     """Return recent search history as HTML partial."""
     templates = request.app.state.templates
     history = _load_search_history()[:limit]
-    return templates.TemplateResponse("partials/search_history.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/search_history.html", {
         "history": history,
     })
 
@@ -448,8 +444,7 @@ async def view_conversation(request: Request, conv_id: str, highlight: str = "")
         """, [conv_id]).fetchall()
 
         if not rows:
-            return templates.TemplateResponse("conversation.html", {
-                "request": request,
+            return templates.TemplateResponse(request, "conversation.html", {
                 "active_page": "search",
                 "conversation_id": conv_id,
                 "title": "Not Found",
@@ -475,8 +470,7 @@ async def view_conversation(request: Request, conv_id: str, highlight: str = "")
                 "msg_index": msg_index,
             })
 
-        return templates.TemplateResponse("conversation.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "conversation.html", {
             "active_page": "search",
             "conversation_id": conv_id,
             "title": title,
@@ -487,8 +481,7 @@ async def view_conversation(request: Request, conv_id: str, highlight: str = "")
         })
 
     except Exception as e:
-        return templates.TemplateResponse("conversation.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "conversation.html", {
             "active_page": "search",
             "conversation_id": conv_id,
             "title": "Error",

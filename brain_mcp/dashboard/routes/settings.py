@@ -410,8 +410,7 @@ async def mcp_config_snippet(request: Request):
     config = _get_mcp_config_json()
     config_json = json.dumps(config, indent=2)
     templates = request.app.state.templates
-    return templates.TemplateResponse("partials/mcp_config_snippet.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/mcp_config_snippet.html", {
         "config_json": config_json,
     })
 
@@ -466,8 +465,7 @@ async def settings_cards(request: Request):
         "model": cfg.summarizer.model if cfg else "",
     }
 
-    return templates.TemplateResponse("partials/settings_cards.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/settings_cards.html", {
         "config_path": config_path,
         "config_dict": config_dict,
         "disk": disk,

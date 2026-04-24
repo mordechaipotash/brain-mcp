@@ -149,8 +149,7 @@ async def source_cards(request: Request):
     sources = _get_source_stats()
     last_sync = _get_last_sync_time()
 
-    return templates.TemplateResponse("partials/source_cards.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/source_cards.html", {
         "sources": sources,
         "last_sync": last_sync,
     })
@@ -202,8 +201,7 @@ async def discover_sources(request: Request):
                 "session_count": len(chatgpt_files),
             })
 
-    return templates.TemplateResponse("partials/discover_sources.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/discover_sources.html", {
         "discovered": discovered,
     })
 

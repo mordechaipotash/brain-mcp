@@ -162,8 +162,7 @@ async def stats_overview(request: Request):
     topics = _get_topic_count()
     search_speed = _get_search_speed()
 
-    return templates.TemplateResponse("partials/stats_cards.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/stats_cards.html", {
         "messages": messages,
         "embedded": embedded,
         "summaries": summaries,

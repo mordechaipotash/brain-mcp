@@ -372,8 +372,7 @@ async def tool_cards(request: Request):
         else:
             total_unavailable += 1
 
-    return templates.TemplateResponse("partials/tool_cards.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "partials/tool_cards.html", {
         "categories": categories,
         "available": available,
         "total": len(TOOLS),

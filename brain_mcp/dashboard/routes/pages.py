@@ -24,8 +24,7 @@ async def home(request: Request):
     except Exception:
         pass
 
-    return templates.TemplateResponse("home.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "home.html", {
         "active_page": "home",
     })
 
@@ -34,8 +33,7 @@ async def home(request: Request):
 async def onboarding_page(request: Request):
     """Onboarding wizard page."""
     templates = request.app.state.templates
-    return templates.TemplateResponse("onboarding.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "onboarding.html", {
         "active_page": "home",
     })
 
@@ -44,8 +42,7 @@ async def onboarding_page(request: Request):
 async def search_page(request: Request):
     """Search page."""
     templates = request.app.state.templates
-    return templates.TemplateResponse("search.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "search.html", {
         "active_page": "search",
     })
 
@@ -54,8 +51,7 @@ async def search_page(request: Request):
 async def sources_page(request: Request):
     """Sources management page."""
     templates = request.app.state.templates
-    return templates.TemplateResponse("sources.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "sources.html", {
         "active_page": "sources",
     })
 
@@ -64,8 +60,7 @@ async def sources_page(request: Request):
 async def tools_page(request: Request):
     """Tool status page."""
     templates = request.app.state.templates
-    return templates.TemplateResponse("tools.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "tools.html", {
         "active_page": "tools",
     })
 
@@ -74,8 +69,7 @@ async def tools_page(request: Request):
 async def settings_page(request: Request):
     """Settings page."""
     templates = request.app.state.templates
-    return templates.TemplateResponse("settings.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "settings.html", {
         "active_page": "settings",
     })
 
@@ -97,8 +91,7 @@ async def conversation_page(request: Request, conv_id: str, highlight: str = "")
         """, [conv_id]).fetchall()
 
         if not rows:
-            return templates.TemplateResponse("conversation.html", {
-                "request": request,
+            return templates.TemplateResponse(request, "conversation.html", {
                 "active_page": "search",
                 "conversation_id": conv_id,
                 "title": "Not Found",
@@ -124,8 +117,7 @@ async def conversation_page(request: Request, conv_id: str, highlight: str = "")
                 "msg_index": msg_index,
             })
 
-        return templates.TemplateResponse("conversation.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "conversation.html", {
             "active_page": "search",
             "conversation_id": conv_id,
             "title": title,
@@ -136,8 +128,7 @@ async def conversation_page(request: Request, conv_id: str, highlight: str = "")
         })
 
     except Exception as e:
-        return templates.TemplateResponse("conversation.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "conversation.html", {
             "active_page": "search",
             "conversation_id": conv_id,
             "title": "Error",
