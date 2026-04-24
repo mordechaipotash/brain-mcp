@@ -1,12 +1,25 @@
 """
-brain-mcp — Cognitive Prosthetic tools.
+brain-mcp — Cognitive Prosthetic tools (L2 + L3 in the SHELET stratification).
 
 These are the SOUL of the prosthetic — they turn a search engine into a
 cognitive aid that preserves context across focus tunnels.
 
 With summaries: full structured analysis (thinking stages, decisions, etc.).
 Without summaries: useful fallbacks from raw conversations + vectors.
+
+Citation contract (SHELET L2/L3 requirement):
+  Every non-structural claim in L2/L3 output MUST carry a citation.
+  Format: `[conv_id · YYYY-MM-DD]` or `[summary_id · YYYY-MM-DD]`.
+  The `_cite()` helper below produces the canonical format.
+
+  Rollout status (see docs/adr/001):
+    ✓ context_recovery — per-summary citations on Recent Summaries section
+    ◯ tunnel_state — TODO: widen GROUP_CONCAT queries to preserve per-question provenance
+    ◯ open_threads / dormant_contexts — TODO: surface summary_id per question
+    ◯ switching_cost — TODO: cite source summaries for concept-overlap rows
 """
+
+from datetime import datetime
 
 from .db import (
     get_summaries_db, parse_json_field,
@@ -19,6 +32,38 @@ _SUMMARIES_HINT = (
     "\n---\n_Running without summaries. For richer analysis with thinking "
     "stages, open questions, and decisions: `brain-mcp summarize`_"
 )
+
+
+def _cite(source_id: str | None, ts: object = None) -> str:
+    """Format a SHELET citation marker: [source_id · YYYY-MM-DD].
+
+    Use for inline citations on L2/L3 output bullets.
+
+    Args:
+        source_id: conv_id, summary_id, or message_id. Truncated to 12 chars
+                   for readability (citations are drilled via `get_conversation`).
+        ts: datetime, ISO string, or None. Rendered as YYYY-MM-DD.
+
+    Returns:
+        Citation string like `[abc123def456 · 2026-04-24]`, or `[source_id]`
+        when ts is unavailable, or empty string when source_id is missing.
+    """
+    if not source_id:
+        return ""
+    sid = str(source_id)[:12]
+    if ts is None:
+        return f"[{sid}]"
+    try:
+        if isinstance(ts, datetime):
+            date_str = ts.strftime("%Y-%m-%d")
+        elif isinstance(ts, str):
+            # Handle ISO-ish strings — take first 10 chars
+            date_str = ts[:10]
+        else:
+            date_str = str(ts)[:10]
+    except Exception:
+        return f"[{sid}]"
+    return f"[{sid} · {date_str}]"
 
 # Map domain names to broader search terms for raw conversation fallback
 _DOMAIN_KEYWORDS = {
@@ -116,7 +161,8 @@ def register(mcp):
             rows = db.execute("""
                 SELECT summary, thinking_stage, importance, emotional_tone,
                        open_questions, decisions, concepts, key_insights, connections_to,
-                       cognitive_pattern, problem_solving_approach, msg_count, title, source
+                       cognitive_pattern, problem_solving_approach, msg_count, title, source,
+                       conversation_id, summarized_at
                 FROM summaries
                 WHERE domain_primary = ?
                 ORDER BY summarized_at DESC
@@ -131,6 +177,7 @@ def register(mcp):
                 "open_questions", "decisions", "concepts", "key_insights",
                 "connections_to", "cognitive_pattern", "problem_solving_approach",
                 "msg_count", "title", "source",
+                "conversation_id", "summarized_at",
             ]
 
             latest = dict(zip(cols, rows[0]))
@@ -200,6 +247,13 @@ def register(mcp):
                 output.append(f"\n### 📊 Thinking Stage History")
                 for s, c in sorted(stage_counts.items(), key=lambda x: -x[1]):
                     output.append(f"  {s or 'unknown'}: {c}")
+
+            # SHELET L2 citation requirement: surface source trail
+            output.append(f"\n### 📎 Sources ({len(rows)})")
+            for row in rows:
+                r = dict(zip(cols, row))
+                title = (r.get("title") or "Untitled")[:50]
+                output.append(f"  - {title} {_cite(r.get('conversation_id'), r.get('summarized_at'))}")
 
             return "\n".join(output)
 
@@ -401,7 +455,8 @@ def register(mcp):
                 r = dict(zip(cols, row))
                 title = (r["title"] or "Untitled")[:60]
                 imp_icon = "💎" if r["importance"] == "breakthrough" else "⭐" if r["importance"] == "significant" else "·"
-                output.append(f"**{imp_icon} {title}** ({r['source']}, {r['msg_count']} msgs)")
+                citation = _cite(r.get("conversation_id"), r.get("summarized_at"))
+                output.append(f"**{imp_icon} {title}** ({r['source']}, {r['msg_count']} msgs) {citation}")
                 output.append(f"> {(r['summary'] or '')[:300]}{'...' if len(r['summary'] or '') > 300 else ''}")
                 output.append("")
 

@@ -1,0 +1,83 @@
+Extract structured knowledge from this conversation for a personal knowledge brain.
+
+The person is Mordechai — neurodivergent (Asperger's + ADHD), builds AI systems, uses AI as co-cognition partner not a task tool.
+
+<conversation>
+{conversation}
+</conversation>
+
+Return valid JSON only. No markdown. No backticks. No commentary.
+
+{
+  "summary": {
+    "text": "2-3 sentence summary of what was discussed and accomplished",
+    "domain_primary": "EXACTLY ONE OF: ai-dev|backend-dev|frontend-dev|data-engineering|devops|business-strategy|career|personal|torah|cognitive-architecture|wotc|optilab",
+    "domain_secondary": "same list or null",
+    "thinking_stage": "EXACTLY ONE OF: exploring|crystallizing|refining|executing",
+    "importance": "EXACTLY ONE OF: breakthrough|significant|routine",
+    "emotional_tone": "EXACTLY ONE OF: excited|frustrated|analytical|reflective|focused",
+    "cognitive_pattern": "EXACTLY ONE OF: deep-dive|rapid-iteration|brainstorming|debugging|architectural|connecting-domains|executing",
+    "resurface_when": "Complete sentence: when should this conversation resurface for context?",
+    "quotable": "The single most quotable sentence from this conversation, or null"
+  },
+  "concepts": [],
+  "edges": [],
+  "corrections": [],
+  "temporal_facts": [],
+  "assets": [],
+  "decisions": [],
+  "open_questions": [],
+  "command_language": {"depth": 0, "redirect": 0, "pace": 0, "mode": 0, "identity": 0}
+}
+
+=== CONCEPTS (max 5) ===
+Named entities from Mordechai's world: projects, frameworks, theses, tools he built, protocols he named. NOT generic tech terms (database, debugging, API). NOT people unless central to a decision.
+Each: {"name": "ProperName", "kind": "framework|principle|protocol|tool|system|project|person|insight", "domain": "...", "is_new": boolean, "description": "one sentence ONLY if is_new=true"}
+
+=== EDGES (max 5) ===
+Relationships BETWEEN concepts listed above. Direction matters:
+- "A implements B" = A is the thing that implements, B is what it implements
+- "A depends-on B" = A needs B to work
+- "A evolved-from B" = A is the newer version, B is the older
+- "A gave-birth-to B" = A existed first and B emerged from it
+
+ONLY these 9 relation types are valid. ANY other string is an error:
+influences, implements, depends-on, extends, part-of, gave-birth-to, evolved-from, contradicts, replaced-by
+
+If the relationship doesn't fit one of these 9 EXACTLY, DO NOT include the edge. Delete it. "contains", "demonstrates", "causes", "provides-data-for", "is_manifestation_of" etc. are all INVALID — use "part-of" or "influences" instead, or drop the edge.
+
+Each: {"from": "...", "to": "...", "relation": "EXACTLY ONE OF THE 9 ABOVE", "confidence": 0.5-1.0, "evidence": "brief quote from conversation proving this"}
+
+=== CORRECTIONS (only explicit) ===
+ONLY when the user explicitly said something was wrong/incorrect. "No no no" followed by a correction counts. Disagreement or preference does not count.
+Each: {"subject": "topic", "wrong_claim": "what was stated incorrectly", "correct_claim": "what is actually true", "correction_type": "factual|timeline|relationship|importance|attribution|definition|domain", "source": "quote from user showing the correction"}
+
+=== TEMPORAL FACTS (max 3) ===
+Numbers or states that are PERSISTENT and TRACKABLE. Ask: "Would I set a dashboard metric for this?"
+YES: total message count, star count, monthly cost, team size, pipeline throughput rate
+NO: countdown timers, dates, file counts during debugging, intermediate values, version numbers during install
+Each: {"subject": "what this is about", "key": "namespace.metric_name", "value": "current value", "value_type": "integer|float|string|date|boolean", "context": "why this metric matters"}
+
+=== ASSETS (max 3) ===
+Genuinely preservable articulations. The "content" field must contain the ACTUAL TEXT worth saving, not a description of it.
+Each: {"kind": "quote|framework-articulation|business-idea|architectural-insight|thesis-statement|graveyard-item", "title": "short descriptive title (3-8 words)", "content": "THE ACTUAL QUOTE OR ARTICULATION — exact words from the conversation", "domain": "same domain list as summary", "tags": ["tag1", "tag2"]}
+
+=== COMMAND LANGUAGE ===
+Count ONLY user messages. Be precise — count actual instances:
+- depth: "go deeper", "10x deeper", "20x deeper", "go further"
+- redirect: "no no no", "pivot", "wrong direction", "step back", "that's wrong"
+- pace: "slow down", "think first", "don't rush", "take your time"
+- mode: "think with me", "brainstorm", "sounding board", "rethink", "explore with me"
+- identity: "who am I", "essence of me", "understand me"
+
+=== HARD LIMITS — ENFORCED ===
+1. concepts: MAX 5. If you have 6, drop the least important. Count before outputting.
+2. edges: MAX 5. Count before outputting.
+3. temporal_facts: MAX 3. Pick the 3 most important dashboard-worthy metrics. Count before outputting.
+4. assets: MAX 3. Pick the 3 most quotable/preservable. Count before outputting.
+5. For routine/short conversations, MOST arrays should be []. Not every conversation contains insights.
+6. Edge relations MUST be from the 9 allowed types. No invented relations.
+7. Asset "content" MUST contain actual quoted text (>20 chars), not summaries.
+8. Asset "kind" values: quote|framework-articulation|business-idea|architectural-insight|thesis-statement|graveyard-item (hyphens, not underscores).
+9. Correction "correction_type" MUST be one of: factual|timeline|relationship|importance|attribution|definition|domain.
+10. Empty arrays are better than low-quality entries.

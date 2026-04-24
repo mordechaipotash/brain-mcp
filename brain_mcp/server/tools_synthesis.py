@@ -17,6 +17,7 @@ from .db import (
     parse_json_field,
     SUMMARIES_TABLE,
 )
+from .tools_prosthetic import _cite
 
 
 def register(mcp):
@@ -73,51 +74,53 @@ def register(mcp):
             domain = r.get("domain_primary", "?")
             stage = r.get("thinking_stage", "?")
             conv_id = r.get("conversation_id", "?")
+            summarized_at = r.get("summarized_at")
+            citation = _cite(conv_id, summarized_at)
 
             if summary and summaries_shown < 5:
                 imp_icon = {"breakthrough": "🔥", "significant": "⭐", "routine": "📝"}.get(importance, "📝")
-                output.append(f"{imp_icon} **{title}** [{domain} | {stage}]")
+                output.append(f"{imp_icon} **{title}** [{domain} | {stage}] {citation}")
                 output.append(f"> {summary[:300]}{'...' if len(summary) > 300 else ''}")
-                output.append(f"_ID: {conv_id[:20]}..._\n")
+                output.append("")
                 summaries_shown += 1
 
             for d in parse_json_field(r.get("decisions")):
                 if d and "none identified" not in str(d).lower():
-                    all_decisions.append((d, title, conv_id))
+                    all_decisions.append((d, title, conv_id, summarized_at))
 
             for q in parse_json_field(r.get("open_questions")):
                 if q and "none identified" not in str(q).lower():
-                    all_open_questions.append((q, title, conv_id))
+                    all_open_questions.append((q, title, conv_id, summarized_at))
 
             for q in parse_json_field(r.get("quotable")):
                 if q and "none identified" not in str(q).lower():
-                    all_quotables.append((q, title))
+                    all_quotables.append((q, title, conv_id, summarized_at))
 
         if all_decisions:
             output.append("### Key Decisions\n")
             seen = set()
-            for decision, title, _ in all_decisions[:10]:
+            for decision, title, conv_id, ts in all_decisions[:10]:
                 d_key = decision[:80].lower()
                 if d_key not in seen:
                     seen.add(d_key)
-                    output.append(f"- {decision[:200]}")
+                    output.append(f"- {decision[:200]} {_cite(conv_id, ts)}")
                     output.append(f"  _From: {title}_")
 
         if all_open_questions:
             output.append("\n### Still Open\n")
             seen = set()
-            for question, title, _ in all_open_questions[:8]:
+            for question, title, conv_id, ts in all_open_questions[:8]:
                 q_key = question[:80].lower()
                 if q_key not in seen:
                     seen.add(q_key)
-                    output.append(f"- {question[:200]}")
+                    output.append(f"- {question[:200]} {_cite(conv_id, ts)}")
                     output.append(f"  _From: {title}_")
 
         if all_quotables:
             output.append("\n### Authentic Quotes\n")
-            for quote, title in all_quotables[:5]:
+            for quote, title, conv_id, ts in all_quotables[:5]:
                 output.append(f"> \"{quote[:250]}\"")
-                output.append(f"> — _{title}_\n")
+                output.append(f"> — _{title}_ {_cite(conv_id, ts)}\n")
 
         return "\n".join(output)
 

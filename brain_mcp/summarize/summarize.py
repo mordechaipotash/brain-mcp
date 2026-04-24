@@ -51,31 +51,49 @@ def normalize_domain(d):
 # SUMMARIZATION PROMPT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-SUMMARY_PROMPT = """Analyze this conversation and extract structured metadata.
+SUMMARY_PROMPT = None  # Loaded from file on first use
 
-<conversation>
-{conversation}
-</conversation>
+def _get_summary_prompt() -> str:
+    """Load the enhanced extraction prompt.
 
-Return a JSON object with exactly these fields:
-{{
-  "summary": "2-3 sentence summary of what was discussed and accomplished",
-  "key_insights": ["insight 1", "insight 2"],
-  "concepts": ["concept1", "concept2"],
-  "decisions": ["decision made 1", "decision made 2"],
-  "open_questions": ["unresolved question 1"],
-  "quotable": ["memorable or insightful quote from the conversation"],
-  "domain_primary": "primary domain (e.g. ai-dev, frontend-dev, business-strategy, personal)",
-  "domain_secondary": "secondary domain or empty string",
-  "thinking_stage": "one of: exploring, crystallizing, refining, executing",
-  "importance": "one of: breakthrough, significant, routine",
-  "emotional_tone": "overall emotional tone (e.g. excited, frustrated, analytical, reflective)",
-  "cognitive_pattern": "thinking pattern observed (e.g. deep-dive, rapid-iteration, brainstorming)",
-  "problem_solving_approach": "approach used (e.g. systematic, creative, analytical)"
-}}
+    Resolution order:
+      1. Package resource at brain_mcp/_prompts/enhanced-extraction-v5.txt
+         (shipped with the wheel — the authoritative location)
+      2. BRAIN_HOME/prompts/enhanced-extraction-v5.txt (user override)
+      3. Legacy sibling-repo path (deprecated, kept for backwards-compat with cogro)
+    """
+    global SUMMARY_PROMPT
+    if SUMMARY_PROMPT is not None:
+        return SUMMARY_PROMPT
 
-Be precise. Use empty arrays [] for fields with no relevant data.
-Return ONLY the JSON object, no other text."""
+    # 1. Primary: package-shipped prompt (importlib.resources)
+    try:
+        from importlib.resources import files
+        pkg_prompt = files("brain_mcp").joinpath("_prompts", "enhanced-extraction-v5.txt")
+        if pkg_prompt.is_file():
+            SUMMARY_PROMPT = pkg_prompt.read_text()
+            return SUMMARY_PROMPT
+    except (ImportError, ModuleNotFoundError, FileNotFoundError):
+        pass
+
+    # 2. User override: BRAIN_HOME/prompts/
+    brain_home = os.environ.get("BRAIN_HOME", "")
+    if brain_home:
+        bh_path = Path(brain_home) / "prompts" / "enhanced-extraction-v5.txt"
+        if bh_path.exists():
+            SUMMARY_PROMPT = bh_path.read_text()
+            return SUMMARY_PROMPT
+
+    # 3. Legacy cogro sibling path (deprecated)
+    legacy = Path(__file__).parent.parent.parent.parent / "clawd" / "cogro" / "prompts" / "enhanced-extraction-v5.txt"
+    if legacy.exists():
+        SUMMARY_PROMPT = legacy.read_text()
+        return SUMMARY_PROMPT
+
+    raise FileNotFoundError(
+        "Enhanced extraction prompt not found. Expected at brain_mcp/_prompts/enhanced-extraction-v5.txt "
+        "(shipped with package) or $BRAIN_HOME/prompts/enhanced-extraction-v5.txt."
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -121,16 +139,22 @@ def _call_gemini(prompt: str, model: str, api_key: str) -> str:
     return response.choices[0].message.content
 
 
+_openrouter_client = None
+_openrouter_key = None
+
 def _call_openrouter(prompt: str, model: str, api_key: str) -> str:
-    """Call any model via OpenRouter (OpenAI-compatible)."""
+    """Call any model via OpenRouter (OpenAI-compatible). Reuses client."""
     import openai
-    client = openai.OpenAI(
-        api_key=api_key,
-        base_url="https://openrouter.ai/api/v1",
-    )
-    response = client.chat.completions.create(
+    global _openrouter_client, _openrouter_key
+    if _openrouter_client is None or _openrouter_key != api_key:
+        _openrouter_client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
+        _openrouter_key = api_key
+    response = _openrouter_client.chat.completions.create(
         model=model,
-        max_tokens=2000,
+        max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
     )
     return response.choices[0].message.content
@@ -158,8 +182,10 @@ PROVIDERS = {
 }
 
 
-def call_llm(prompt: str) -> str:
-    """Call the configured LLM provider."""
+def call_llm(prompt: str, max_retries: int = 3, backoff: float = 5.0) -> str:
+    """Call the configured LLM provider with retry on transient errors."""
+    import time as _time
+
     cfg = get_config()
     provider = cfg.summarizer.provider
     model = cfg.summarizer.model
@@ -169,7 +195,21 @@ def call_llm(prompt: str) -> str:
     if not call_fn:
         raise ValueError(f"Unknown provider: {provider}. Use: {list(PROVIDERS.keys())}")
 
-    return call_fn(prompt, model, api_key)
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            return call_fn(prompt, model, api_key)
+        except Exception as e:
+            last_err = e
+            err_str = str(e).lower()
+            # Retry on transient errors (connection, timeout, 5xx, rate limit)
+            if any(kw in err_str for kw in ("connection", "timeout", "502", "503", "529", "rate")):
+                wait = backoff * (2 ** attempt)
+                print(f"  Retry {attempt+1}/{max_retries} after {wait:.0f}s ({e})", flush=True)
+                _time.sleep(wait)
+                continue
+            raise  # non-transient error, don't retry
+    raise last_err  # exhausted retries
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -229,7 +269,7 @@ def get_conversations_to_summarize(full: bool = False) -> list[dict]:
 
 def summarize_conversation(conv: dict) -> dict | None:
     """Summarize a single conversation, return structured record or None."""
-    prompt = SUMMARY_PROMPT.format(conversation=conv["text"])
+    prompt = _get_summary_prompt().replace("{conversation}", conv["text"])
 
     try:
         response = call_llm(prompt)
@@ -286,7 +326,10 @@ def run_summarize(full: bool = False):
 
     with open(jsonl_path, mode) as f:
         for i, conv in enumerate(conversations, 1):
-            print(f"[{i}/{len(conversations)}] {conv['title'][:60]}...", flush=True)
+            title = conv.get('title') or conv.get('conversation_title') or ''
+            if not isinstance(title, str):
+                title = str(title) if title == title else ''  # handle NaN
+            print(f"[{i}/{len(conversations)}] {title[:60]}...", flush=True)
             record = summarize_conversation(conv)
             if record:
                 f.write(json.dumps(record) + "\n")
@@ -296,6 +339,16 @@ def run_summarize(full: bool = False):
                 print(f"  Skipped (error)", flush=True)
 
     print(f"\n✅ Summarized {len(records)} conversations → {jsonl_path}", flush=True)
+
+    # Clean up LLM clients before embed step (avoid "too many open files")
+    global _openrouter_client
+    if _openrouter_client is not None:
+        try:
+            _openrouter_client.close()
+        except Exception:
+            pass
+        _openrouter_client = None
+    gc.collect()
 
     # Convert to parquet + embed
     if records or full:
@@ -325,43 +378,93 @@ def jsonl_to_parquet():
 
             data = obj.get("data", {})
 
+            # Handle both v5 (enhanced) and legacy formats
+            summary_obj = data.get("summary", {})
+            if isinstance(summary_obj, dict):
+                # v5 enhanced format: summary is an object
+                summary_text = summary_obj.get("text", "")
+                domain_primary = normalize_domain(summary_obj.get("domain_primary", ""))
+                domain_secondary = normalize_domain(summary_obj.get("domain_secondary", ""))
+                thinking_stage = summary_obj.get("thinking_stage", "")
+                importance = summary_obj.get("importance", "routine")
+                emotional_tone = summary_obj.get("emotional_tone", "")
+                cognitive_pattern = summary_obj.get("cognitive_pattern", "")
+                resurface_when = summary_obj.get("resurface_when", "")
+                quotable = summary_obj.get("quotable", "")
+                # Concepts are objects in v5
+                concepts_list = data.get("concepts", [])
+                concepts_json = json.dumps(concepts_list)
+                concept_names = [c["name"] for c in concepts_list if isinstance(c, dict)] if concepts_list else []
+            else:
+                # Legacy format: summary is a string
+                summary_text = str(summary_obj) if summary_obj else ""
+                domain_primary = normalize_domain(data.get("domain_primary", ""))
+                domain_secondary = normalize_domain(data.get("domain_secondary", ""))
+                thinking_stage = data.get("thinking_stage", "")
+                importance = data.get("importance", "routine")
+                emotional_tone = data.get("emotional_tone", "")
+                cognitive_pattern = data.get("cognitive_pattern", "")
+                resurface_when = ""
+                quotable = json.dumps(data.get("quotable", []))
+                concepts_list = data.get("concepts", [])
+                concepts_json = json.dumps(concepts_list)
+                concept_names = concepts_list if isinstance(concepts_list, list) else []
+
             rec = {
                 "conversation_id": obj.get("conversation_id", ""),
                 "source": obj.get("source", ""),
                 "title": obj.get("title", ""),
                 "msg_count": obj.get("msg_count", 0),
-                "summary": data.get("summary", ""),
-                "key_insights": json.dumps(data.get("key_insights", [])),
-                "concepts": json.dumps(data.get("concepts", [])),
+                "summary": summary_text,
+                "concepts": concepts_json,
                 "decisions": json.dumps(data.get("decisions", [])),
                 "open_questions": json.dumps(data.get("open_questions", [])),
-                "quotable": json.dumps(data.get("quotable", [])),
-                "importance": data.get("importance", "routine"),
-                "domain_primary": normalize_domain(data.get("domain_primary", "")),
-                "domain_secondary": normalize_domain(data.get("domain_secondary", "")),
-                "thinking_stage": data.get("thinking_stage", ""),
-                "emotional_tone": data.get("emotional_tone", ""),
-                "cognitive_pattern": data.get("cognitive_pattern", ""),
-                "problem_solving_approach": data.get("problem_solving_approach", ""),
+                "quotable": quotable if isinstance(quotable, str) else json.dumps(quotable),
+                "importance": importance,
+                "domain_primary": domain_primary,
+                "domain_secondary": domain_secondary,
+                "thinking_stage": thinking_stage,
+                "emotional_tone": emotional_tone,
+                "cognitive_pattern": cognitive_pattern,
+                "resurface_when": resurface_when,
+                "command_language": json.dumps(data.get("command_language", {})),
+                # Fan-out data (stored as JSON for the fan-out script)
+                "edges_json": json.dumps(data.get("edges", [])),
+                "corrections_json": json.dumps(data.get("corrections", [])),
+                "temporal_facts_json": json.dumps(data.get("temporal_facts", [])),
+                "assets_json": json.dumps(data.get("assets", [])),
                 "summarized_at": datetime.now().isoformat(),
-                "summary_hash": hashlib.md5(data.get("summary", "").encode()).hexdigest()[:16],
+                "summary_hash": hashlib.md5(summary_text.encode()).hexdigest()[:16],
             }
 
             # Build embedding text
-            insights = "; ".join(data.get("key_insights", []))
-            concepts = ", ".join(data.get("concepts", []))
-            decisions = "; ".join(data.get("decisions", []))
-            oq = "; ".join(data.get("open_questions", []))
+            concepts_str = ", ".join(concept_names)
+            raw_decisions = data.get("decisions", [])
+            if isinstance(raw_decisions, list):
+                decisions = "; ".join(
+                    d.get("text", str(d)) if isinstance(d, dict) else str(d)
+                    for d in raw_decisions
+                )
+            else:
+                decisions = str(raw_decisions)
+            raw_oq = data.get("open_questions", [])
+            if isinstance(raw_oq, list):
+                oq = "; ".join(
+                    q.get("text", str(q)) if isinstance(q, dict) else str(q)
+                    for q in raw_oq
+                )
+            else:
+                oq = str(raw_oq)
 
-            parts = [rec["summary"]]
-            if insights:
-                parts.append(f"Key insights: {insights}")
-            if concepts:
-                parts.append(f"Concepts: {concepts}")
+            parts = [summary_text]
+            if concepts_str:
+                parts.append(f"Concepts: {concepts_str}")
             if decisions:
                 parts.append(f"Decisions: {decisions}")
-            if oq and oq != "none identified":
+            if oq:
                 parts.append(f"Open questions: {oq}")
+            if resurface_when:
+                parts.append(f"Resurface: {resurface_when}")
 
             rec["embedding_text"] = ". ".join(parts)
             records.append(rec)

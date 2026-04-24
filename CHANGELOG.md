@@ -2,6 +2,31 @@
 
 All notable changes to Brain MCP will be documented in this file.
 
+## [0.4.0] — 2026-04-24 — SHELET reference implementation
+
+This release reframes brain-mcp as the first **SHELET-compliant MCP server**. Every tool now declares the layer it operates on, what it reads, what it writes, and what citations it must return. See [ADR-001](docs/adr/001-shelet-reference-implementation.md) for the full rationale.
+
+### Added
+- **`.claude/skills/` pack** — 25 SKILL.md manifests, one per MCP tool, stratified across L0 (raw accounting) / L1 (deterministic retrieval) / L2 (synthesis with citations required) / L3 (fusion / route-to-attention) / utility
+- **`make verify-skills`** — new Makefile target + `scripts/verify_skills.py` that validates every manifest against 8 invariants (required fields, layer/citations consistency, body sections). Wired into GitHub Actions CI alongside pytest.
+- **SHELET citation helper** — `_cite(source_id, ts)` in `brain_mcp/server/tools_prosthetic.py` produces canonical `[source_id · YYYY-MM-DD]` markers. Rollout started on `context_recovery`, `tunnel_state` (Sources footer), and `what_do_i_think` (per-decision / per-question / per-quote citations).
+- **Supabase Migration 003** — `supabase/migrations/003_shelet_l0_to_l3.sql` ships the L0-L3 canonical schema with CHECK-enforced citations, layer-bounded RLS policies, and `brain.resolve_citations(l3_id)` recursive citation-chain resolver. Optional layer, off by default. See [ADR-002](docs/adr/002-supabase-canonical-backend.md).
+- **ADR-001** — full decision record for the SHELET adoption (context, stratification table, 7-day implementation sprint, consequences)
+- **ADR-002** — Supabase canonical backend plan (migration ships now, Python adapter deferred to v0.5.0)
+
+### Fixed
+- **Critical launch blocker**: `brain_mcp/summarize/summarize.py` no longer reads the enhanced-extraction prompt from `../../../clawd/cogro/prompts/enhanced-extraction-v5.txt`. The prompt now ships inside the package at `brain_mcp/_prompts/enhanced-extraction-v5.txt` and is loaded via `importlib.resources`. Public installs no longer fail on first `brain-mcp summarize` with `FileNotFoundError`. Legacy cogro sibling path is kept as a third-tier fallback for backwards compatibility.
+- `pyproject.toml` adds `"brain_mcp" = ["_prompts/*.txt"]` to `[tool.setuptools.package-data]` so the prompt ships with the wheel.
+
+### Changed
+- **r/mcp launch post rewritten** — new framing: "the first SHELET-compliant MCP server. 25 stratified skills, structural citation discipline, layer-bounded permissions." Links to ADR-001 and Migration 003.
+- Package description: "Turn your AI conversations into a searchable second brain with cognitive prosthetic tools" → "SHELET-compliant cognitive prosthetic for AI agents — 25 stratified MCP skills with structural citation discipline"
+
+### Deferred to v0.5.0
+- Python Supabase adapter (`brain_mcp/supabase_adapter.py`)
+- `brain-mcp setup --supabase` CLI flag
+- Full citation rollout across remaining L2/L3 tools (`thinking_trajectory`, `dormant_contexts`, `open_threads`, `switching_cost`, `alignment_check`, `cognitive_patterns`)
+
 ## [0.1.9] — 2026-03-04
 
 ### Added — Dashboard (feature-complete)

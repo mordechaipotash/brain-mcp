@@ -15,7 +15,7 @@ VENV := venv
 PIP := $(VENV)/bin/pip
 PY := $(VENV)/bin/python
 
-.PHONY: setup ingest embed summarize serve test clean lint help
+.PHONY: setup ingest embed summarize serve test clean lint verify-skills help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -65,6 +65,9 @@ lint: ## Check code quality with basic checks
 	@$(PY) -m py_compile brain_mcp/ingest/schema.py
 	@$(PY) -m py_compile brain_mcp/ingest/noise_filter.py
 	@echo "No syntax errors found."
+
+verify-skills: ## Validate SHELET skill manifests against the MCP tool surface
+	@$(PY) scripts/verify_skills.py
 
 clean: ## Remove generated data (keeps config and sources)
 	@echo "Cleaning generated data..."

@@ -29,3 +29,6 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v
+
+      - name: Verify SHELET skill manifests
+        run: python scripts/verify_skills.py
