@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/mordechaipotash-brain-mcp-badge.png)](https://mseep.ai/app/mordechaipotash-brain-mcp)
+
 # brain-mcp v1.0
 
 **Transportable AI memory, now shipping as a distributable.**
