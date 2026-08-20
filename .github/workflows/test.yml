@@ -30,5 +30,9 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v
 
-      - name: Verify SHELET skill manifests
-        run: python scripts/verify_skills.py
+      # A "Verify SHELET skill manifests" step ran scripts/verify_skills.py here until 2026-08-20.
+      # b1da38f (2.0.0b1, THE RECORDER) deleted both that script and the .claude/skills tree it
+      # validated, but left the step behind — so every matrix leg died in ~1s on a missing file,
+      # and the red X said "tests failed" when the tests had in fact passed. The gate had nothing
+      # left to gate: this repo now contains zero SKILL.md files. Removed rather than restored.
+      # If skills come back, recover it with `git show 7235db0:scripts/verify_skills.py`.

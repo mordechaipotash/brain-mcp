@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.0b3] — 2026-08-20 — scan-secrets: the floor can now audit itself
+
+### Added
+- **`brain-mcp scan-secrets`** — finds credentials sitting in the floor, because a
+  bytes-forever floor replicates whatever it captured into every backup. Reports a
+  sha256 handle per finding, never a value, so the output is safe to paste anywhere
+  and the id is stable across runs (that is how you confirm a rotation worked).
+  `--exit-nonzero-on-findings` makes it cron-able. `brain-mcp doctor` now reports the count.
+- Known documentation examples (AWS's canonical key) and same-line-annotated
+  placeholders are excluded by value, not by guesswork.
+
+### Note
+Found on the author's own 767-session floor on release day: 50 distinct credentials.
+The scanner's discrimination rules were both written by a falsification test that
+caught them failing in each direction — see tests/test_secrets_scan.py.
+
 ## [2.0.0b2] — 2026-08-20 — fix: search crashed without pytz
 
 b1's search/recent/sessions/health fetched TIMESTAMPTZ columns, and duckdb's Python

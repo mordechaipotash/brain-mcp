@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brain-mcp"
-version = "2.0.0b2"
+version = "2.0.0b3"
 description = "Transportable AI memory — MCP server for the Bob protocol. Local-only, no cloud, no embeddings."
 readme = "README.md"
 license = {text = "MIT"}

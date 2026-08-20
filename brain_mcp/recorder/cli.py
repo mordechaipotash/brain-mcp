@@ -222,6 +222,18 @@ def cmd_migrate_v1(args) -> int:
     return 0
 
 
+def cmd_scan_secrets(args) -> int:
+    """Report credentials sitting in the floor. Values are never printed."""
+    _init()
+    from . import secrets as sec
+
+    rep = sec.scan(lanes=[args.lane] if args.lane else None)
+    print(json.dumps(rep, indent=2, default=str))
+    if args.exit_nonzero_on_findings and rep["distinct_findings"]:
+        return 1
+    return 0
+
+
 def cmd_doctor(args) -> int:
     _init()
     from . import api
@@ -229,6 +241,10 @@ def cmd_doctor(args) -> int:
     print("brain-mcp v2 doctor")
     print(json.dumps(api.capture_status(), indent=2, default=str))
     print(json.dumps(api.health()["summary"], indent=2))
+    from . import secrets as sec
+    rep = sec.scan()
+    n = rep["distinct_findings"]
+    print(f"secrets in floor: {n} distinct" + (f" {rep['by_shape']} — run 'brain-mcp scan-secrets'" if n else " ✓"))
     return 0
 
 
@@ -272,6 +288,12 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("migrate-v1", help="import v1 all_conversations.parquet (marked v1_derived)")
     p.add_argument("parquet")
     p.set_defaults(fn=cmd_migrate_v1)
+
+    p = sub.add_parser("scan-secrets", help="find credentials in the floor (values never printed)")
+    p.add_argument("--lane", default=None)
+    p.add_argument("--exit-nonzero-on-findings", action="store_true",
+                   help="cron-able: makes 'no secrets in the floor' a claim that runs")
+    p.set_defaults(fn=cmd_scan_secrets)
 
     p = sub.add_parser("doctor", help="capture status + health summary")
     p.set_defaults(fn=cmd_doctor)
