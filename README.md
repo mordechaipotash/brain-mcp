@@ -1,186 +1,123 @@
-# brain-mcp v1.0
+<!-- mcp-name: io.github.mordechaipotash/brain-mcp -->
 
-**Transportable AI memory, now shipping as a distributable.**
+# brain-mcp — the recorder for your AI conversations
 
-*Your AI conversation history, queryable from any MCP-aware LLM, stored entirely on your machine.*
-
-[![Stars](https://img.shields.io/github/stars/mordechaipotash/brain-mcp?style=flat-square)](https://github.com/mordechaipotash/brain-mcp/stargazers)
-[![PyPI](https://img.shields.io/pypi/v/brain-mcp?style=flat-square&logo=pypi&logoColor=white)](https://pypi.org/project/brain-mcp/)
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-
----
-
-## What changed in v1.0
-
-brain-mcp v0.x was a hosted SHELET reference implementation pointed at a Supabase substrate. **v1.0 is a thin MCP server that wraps the [Bob protocol](https://apiiam.com/bob/init.0).** Storage moved from cloud Postgres to local parquets under `~/.bob/`. The protocol is free; brain-mcp is one implementation; a paid `bob managed *` tier (cloud sync, recipes) is opt-in and lives in a separate package.
-
-The 53 of you who starred v0.x: thank you. v1.0 is the version we were always going to build — *memory belongs to the rememberer is the architecture that makes the product possible*, not just the pitch.
-
-### What v1.0 inherits
-- The 8-tool surface (`bob_search`, `bob_recent`, `bob_what_do_i_think`, `bob_tunnel_state`, `bob_thinking_trajectory`, `bob_open_threads`, `bob_conversations_by_date`, `bob_health`).
-- The "AI assistant readme" frame — your LLM reads this README and gets dramatically more useful.
-- The cite-or-die discipline — every claim from brain-mcp surfaces a `conv_id`, `ts`, and `src` so the LLM can show its work.
-
-### What v1.0 drops
-- Cloud database connection (no Supabase, no anon keys).
-- Semantic search (no embeddings yet; v1.0 is keyword-only — embeddings are a separate future protocol).
-- The `brainmcp.dev` hosted demo dashboard (the protocol is the spec now, not a website).
-
----
-
-## Install (2 minutes)
-
-### Step 1 — Install Bob
-
-In any LLM session that can fetch URLs (Claude Code, Claude.ai with web search, ChatGPT with browse, Cursor, etc.), paste:
-
-```
-Run this: https://apiiam.com/bob/init.0
-```
-
-The LLM fetches the XML protocol, runs duckdb against `~/.claude/projects/`, `~/.codex/sessions/`, your Cursor sqlite, and any ChatGPT / Claude.ai exports you've downloaded. Writes `~/.bob/turns.parquet` (~5 min, ~30MB for an active user). No passwords, no signups, no network calls beyond the initial spec fetch.
-
-Optional — promote L0 → L1 (noise filter):
-
-```
-Run this: https://apiiam.com/bob/init.1
-```
-
-Strips system-reminders, command outputs, build-log pastes. Writes `~/.bob/turns.l1.parquet` + audit trail.
-
-### Step 2 — Install brain-mcp
+**Your AI history is being deleted right now.** Claude Code deletes session files older
+than `cleanupPeriodDays` (default **30**) at startup. Run this and see your own cliff edge:
 
 ```bash
-uvx brain-mcp                    # ephemeral, no install
-# OR
-uv tool install brain-mcp        # persistent CLI
-# OR
-pipx install brain-mcp
+# macOS
+find ~/.claude/projects -name '*.jsonl' -exec stat -f '%Sm  %N' -t '%Y-%m-%d' {} + | sort | head -3
+# Linux
+find ~/.claude/projects -name '*.jsonl' -printf '%TY-%Tm-%Td %p\n' | sort | head -3
 ```
 
-### Step 3 — Register with your LLM client
+The oldest date you see is where your history ends. brain-mcp records it before it goes —
+byte-exact, content-hashed, locally — and makes it queryable with citations you can verify
+with `sed` and `shasum`.
 
-**Claude Code / Claude Desktop** — add to `~/.claude/mcp.json` (or via `claude mcp add`):
+## Install
 
-```json
-{
-  "mcpServers": {
-    "brain": {
-      "command": "uvx",
-      "args": ["brain-mcp"]
-    }
-  }
-}
+```bash
+pipx install brain-mcp --pre     # or: uvx brain-mcp
+brain-mcp install cc             # CC hooks + 60-second scheduler
+brain-mcp serve                  # the MCP server (stdio) — add to your client config
 ```
 
-**Cursor / Continue / other MCP clients** — same shape, see their MCP docs.
+Or as a Claude Code plugin (hooks + server in one step):
 
-That's it. Open a new LLM session and ask: *"what was I working on last week?"*
+```
+/plugin marketplace add mordechaipotash/brain-marketplace
+/plugin install brain
+```
 
----
+## What it does
+
+- **Captures at source.** Claude Code via Stop/SessionEnd hooks (line-deltas + a final
+  snapshot); Codex and Pi via a 60-second poll-scan. One spool, one floor.
+- **Keeps the bytes.** The floor is `~/.brain/lake/<lane>/<session>.jsonl` — append-only,
+  byte-identical to the original, with an append-only sha256 manifest. Nothing is parsed
+  and discarded; the DuckDB index is a cache, fully re-derivable from the lake.
+- **Cites or abstains.** Every search hit carries `{file, line span, sha256}` — checkable
+  by anyone with `sed -n 'A,Bp' file | shasum -a 256`, no database required. Zero hits
+  return an explicit abstention naming the lanes and dates actually searched.
+- **Reports health honestly.** `fresh` = the floor holds everything the agent's files show;
+  `stale` = the agent has content the recorder missed; **`unknown` = unmeasured, not
+  healthy** — never folded into "looks fine".
+- **Backs up verifiably.** `brain-mcp backup <dest>` syncs lake+manifest and re-hashes
+  sampled files at the destination. The verify can fail; that is the point.
+- **Zero network calls at runtime.** No telemetry, no cloud, no accounts. Verify it:
+  there is no httpx/requests import in this package.
+
+## The 7 MCP tools
+
+| tool | what |
+|---|---|
+| `brain_search` | BM25 over everything recorded; cited hits or an explicit abstention |
+| `brain_get` | the raw lines behind a citation, with sha verification |
+| `brain_recent` | time-ordered recent activity, every row cited |
+| `brain_sessions` | session cards per day/agent |
+| `brain_health` | per-lane origin-vs-floor freshness; unknown ≠ healthy |
+| `brain_capture_status` | is the machinery itself moving (spool, heartbeats, floor) |
+| `brain_backup` | verified backup; writes only outside the floor |
 
 ## 🤖 For AI Assistants
 
-*You're reading this because your human installed brain-mcp and gave you access to their AI conversation history. Here's how to use it well.*
+*You're reading this because your human runs THE RECORDER and gave you access to their
+AI history. This is the honesty contract.*
 
-### When to call which tool
+**The one rule: everything you state from these tools is either CITED or ABSTAINED —
+there is no third state.** A cited claim carries a checkable pointer (file + line span +
+sha256); verify it with `brain_get(expect_sha256=...)` before building on it. An
+abstention means "not found above threshold in the lanes and dates the tool measured" —
+it does NOT mean "it never happened". Never fill an abstention with your own guess.
 
-| Your human says... | You should call... | Why |
-|---|---|---|
-| "Where did I leave off with..." | `bob_tunnel_state(domain)` | Reconstructs their mental save-state for that domain — most recent activity across the top conversations |
-| "What do I think about..." | `bob_what_do_i_think(topic)` | Filters to *user-role* turns only, deduplicated. Their voice, not the AI's reframe. |
-| "I was working on something about..." | `bob_search(query)` | Substring match across both roles. Returns up to 12 most recent matches. |
-| "What was I doing yesterday / last week?" | `bob_recent(hours=24)` or `bob_conversations_by_date(date)` | Time-based browse. |
-| "I keep forgetting to..." | `bob_open_threads()` | Surfaces turns with TODO / `?` / blocked / waiting-on. |
-| "How did my thinking on X evolve?" | `bob_thinking_trajectory(topic)` | User-turns in *ascending* time order. Read left-to-right. |
-| *Starting any new topic* | `bob_search(topic)` | Check if they've thought about it before. |
-| *Uncertain what's available* | `bob_health()` | Reports active layer (L1 if filtered, else L0), per-source counts, manifest. |
+- Present recall as their words, dated: *"On 2026-08-19 you wrote: '…' (sess-7f2a.jsonl:412)"* —
+  never as your own knowledge. One claim, one citation.
+- `verified: false` from brain_get means the floor changed since indexing. Say so plainly.
+- A health response containing any `unknown` lane is never "everything looks fine".
+  The honest sentence is: "2 lanes fresh, 1 stale, 1 unmeasured."
+- "What do I think about X" → `brain_search(query, role="user")`. "How did my thinking
+  evolve" → add `order="time_asc"` and read the citations in time order. The server has
+  no opinion about your human's mind; it has their words, with receipts.
 
-### What brain-mcp does NOT do
-- **No semantic / embedding search.** v1.0 is keyword-only. Don't claim "I searched semantically" — claim "I searched the keyword X across their conversations." For sentences that should match semantically, try multiple keyword angles.
-- **No cross-LLM identity stitching.** A conversation in ChatGPT and one in Claude on the same topic are two `conv_id`s. Surface both; don't merge.
-- **No future-looking inference.** The data is what they typed. Don't speculate "they're probably about to X" — say "in conversation Y on date Z they said Q."
-- **No write-back.** brain-mcp is strictly read-only on the parquets.
-
-### Cite-or-die discipline
-Every fact you state from brain-mcp must include the `ts`, `src`, and `conv_id` from the row(s) it came from. Don't paraphrase what they said without telling them where you read it. "In your conductor-role-orchestra conversation on 2026-05-23, you wrote: *...*" — not "you believe X."
-
----
-
-## 👤 For Humans
-
-### What brain-mcp does
-You've been chatting with AI for months or years across multiple tools (ChatGPT, Claude, Cursor, Codex, Claude Code). Each tool only sees its own slice. **Bob captures all five into one local file. brain-mcp lets any MCP-aware LLM read that file.**
-
-The first time you ask a fresh LLM session *"what was I working on last week?"* and it answers with conversations from three different tools — that's the unlock.
-
-### What brain-mcp does NOT do
-- **It does not phone home.** brain-mcp opens no network sockets. Your data stays on your machine. (Verify: run `lsof -p <brain-mcp-pid>` while it's serving.)
-- **It does not need an account.** No signup, no API keys.
-- **It does not generate embeddings.** v1.0 is keyword search only. Embeddings are a separate (also local) future protocol.
-- **It does not modify your AI conversation logs.** brain-mcp reads `~/.bob/turns.parquet`, which bob produced from your CC / Codex / Cursor / export files. The original logs are untouched.
-
-### Storage layout
+## The floor format
 
 ```
-~/.bob/
-├── turns.parquet          ← L0: raw turns from up to 5 sources (init.0 output)
-├── turns.l1.parquet       ← L1: noise-filtered (init.1 output; optional)
-├── turns.l1.dropped.parquet ← L1 audit trail (which turns were filtered, why)
-└── turns.l1.manifest.json ← counts + drop reasons (also optional)
+~/.brain/
+  spool/<lane>/                 hooks + scanner write here (atomic, dot-tmp invisible)
+  lake/<lane>/<session>.jsonl   THE FLOOR: append-only, byte-identical to the origin;
+                                a rewrite opens <session>.g2.jsonl — old kept, never deleted
+  manifest/manifest.jsonl       one versioned line per chunk: byte range, line range, sha256
+  offsets/<lane>/<session>      hook fast-path line counters
+  health/*.last_run             side-effect heartbeats (mtimes are the proof, never a report)
+  brain.duckdb                  the index — a cache, re-derivable from lake/ + manifest/
 ```
 
-brain-mcp prefers L1 when present, falls back to L0.
+Where your agents keep their transcripts: Claude Code `~/.claude/projects/**/*.jsonl`
+(rolling window!), Codex `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`, Pi
+`~/.pi/agent/sessions/**/*.jsonl`.
 
-### Refresh
+## Other verbs
 
-Re-run init.0 in any LLM session. It overwrites `~/.bob/turns.parquet` with the latest 30 days. No cron, no daemon — you choose when.
-
----
-
-## Architecture
-
-- **Protocol:** [apiiam.com/bob/init.0](https://apiiam.com/bob/init.0) (XML, fetched by your LLM)
-- **Storage:** parquet files under `~/.bob/` (or `$BOB_HOME`)
-- **Query engine:** duckdb (in-process, in-memory, read-only against parquets)
-- **MCP server:** Python + FastMCP, stdio transport
-- **Optional service tier:** `bob managed *` subcommands for cloud sync (separate package, opt-in, lives at a different binary — not bundled here)
-
-```
-Your LLM (Claude / ChatGPT / Cursor / ...)
-        ↓ MCP stdio
-brain-mcp (this package)
-        ↓ duckdb read_parquet
-~/.bob/turns.l1.parquet  (or L0 if no L1)
-        ↑ written by
-init.0 / init.1 (Bob protocol, run in an LLM session)
-        ↑ reads
-your raw AI conversation logs (CC / Codex / Cursor / exports)
+```bash
+brain-mcp record                  # one capture tick (the scheduler runs this every 60s)
+brain-mcp health [--exit-nonzero-on-stale]   # cron-able
+brain-mcp doctor                  # capture status + health summary
+brain-mcp redact <file> --lines A B --reason "..."   # tombstone a secret; audited in manifest
+brain-mcp migrate-v1 <all_conversations.parquet>     # import v1 data (marked v1_derived)
+brain-mcp uninstall               # removes hooks + scheduler; your floor is KEPT
 ```
 
-No box in this diagram makes a network call after install except `init.0` fetching the protocol URL once.
+## v1 → v2
 
----
+v2 is a rebuild around one principle: **capture the bytes first; derive everything else.**
+v1 parsed conversations into a parquet and discarded the originals — v2's floor makes that
+structurally impossible. v1's 25 tools became 7: the synthesis tools ("cognitive patterns",
+"switching cost") are gone because a claim that can't carry a line-span citation isn't one
+this server makes. Migration: `brain-mcp migrate-v1` — v1 rows are kept, marked as derived,
+and floor-backed rows win wherever the source still exists.
 
-## v0.x compatibility
+Windows: out of scope for v2.0. Scheduling is LaunchAgent (macOS) / systemd user timer (Linux).
 
-If you registered the v0.x `brain-mcp` against a Supabase substrate: that config no longer works. v1.0 reads local parquets only. To migrate:
-
-1. Run https://apiiam.com/bob/init.0 to produce `~/.bob/turns.parquet`.
-2. Upgrade: `uv tool upgrade brain-mcp` (or `pipx upgrade brain-mcp`).
-3. Restart your LLM client (it re-spawns the MCP server with the new code).
-
-Your old `BRAIN_MCP_DB_URL` / `BRAIN_MCP_API_KEY` env vars are now ignored. Remove them.
-
----
-
-## License
-
-MIT. Use anywhere, including commercially. No warranty.
-
-## Links
-
-- Protocol: https://apiiam.com/bob/init.0
-- Author: Mordechai Potash — [mordechaipotash.com](https://mordechaipotash.com)
-- Essays on the underlying thesis: [daf.mordechaipotash.com](https://daf.mordechaipotash.com)
-- Issues / discussion: [GitHub](https://github.com/mordechaipotash/brain-mcp/issues)
+MIT.

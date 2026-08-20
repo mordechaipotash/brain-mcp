@@ -1,8 +1,0 @@
-<pre><code id="mcp-config-code">{{ config_json }}</code></pre>
-<button class="outline secondary" onclick="
-    const code = document.getElementById('mcp-config-code').textContent;
-    navigator.clipboard.writeText(code).then(() => {
-        this.textContent = '✅ Copied!';
-        setTimeout(() => { this.textContent = '📋 Copy Config'; }, 2000);
-    });
-">📋 Copy Config</button>
