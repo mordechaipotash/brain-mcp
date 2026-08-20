@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Pi ingester** (`brain_mcp/ingest/pi.py`) — Pi (pi.ai coding agent) sessions from
+  `~/.pi/agent/sessions/**/*.jsonl` now ingest like the other sources. Handles the v3
+  format: `session` metadata → conversation_id/project, `message` lines → records
+  (toolResult skipped), and models tracked from `model_change` events since Pi does not
+  carry the model on the message itself. Closes #2. Thanks @pierre-mgmt for the
+  format writeup.
+
 ## [1.0.0-beta.1] — 2026-05-28
 
 **v1.0 BETA.** Major rewrite: brain-mcp is now a thin MCP server wrapping the

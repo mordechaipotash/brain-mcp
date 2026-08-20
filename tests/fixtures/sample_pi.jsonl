@@ -1,0 +1,10 @@
+{"type":"session","version":3,"id":"11111111-2222-3333-4444-555555555555","timestamp":"2026-05-12T18:41:06.304Z","cwd":"/Users/example/my-project"}
+{"type":"model_change","id":"f5a89f19","parentId":null,"timestamp":"2026-05-12T18:41:06.305Z","provider":"anthropic","modelId":"claude-sonnet-5"}
+{"type":"thinking_level_change","id":"d218a31a","parentId":"f5a89f19","timestamp":"2026-05-12T18:41:06.305Z","thinkingLevel":"off"}
+{"type":"message","id":"70b299c3","parentId":"d218a31a","timestamp":"2026-05-12T18:41:06.318Z","message":{"role":"user","content":[{"type":"text","text":"please refactor the parser module to handle empty input files gracefully"}]}}
+{"type":"message","id":"81c3aad4","parentId":"70b299c3","timestamp":"2026-05-12T18:41:12.402Z","message":{"role":"assistant","content":[{"type":"text","text":"I'll refactor the parser to return an empty result set on empty input instead of raising."},{"type":"tool_use","id":"tu_1","name":"edit_file","input":{"path":"parser.py"}}]}}
+{"type":"message","id":"92d4bbe5","parentId":"81c3aad4","timestamp":"2026-05-12T18:41:14.100Z","message":{"role":"toolResult","content":[{"type":"text","text":"file edited ok — this tool output must be skipped"}]}}
+{"type":"model_change","id":"a1b2c3d4","parentId":"92d4bbe5","timestamp":"2026-05-12T18:42:00.000Z","provider":"anthropic","modelId":"claude-opus-5"}
+{"type":"message","id":"a3e5ccf6","parentId":"92d4bbe5","timestamp":"2026-05-12T18:42:05.500Z","message":{"role":"assistant","content":[{"type":"text","text":"Done. The parser now returns [] for empty files and logs a warning instead of raising ValueError."}]}}
+{"type":"custom","id":"deadbeef","parentId":"a3e5ccf6","timestamp":"2026-05-12T18:42:06.000Z","payload":{"kind":"noise"}}
+{"type":"message","id":"b4f6ddg7","parentId":"a3e5ccf6","timestamp":"2026-05-12T18:42:10.000Z","message":{"role":"user","content":[{"type":"text","text":"ok"}]}}

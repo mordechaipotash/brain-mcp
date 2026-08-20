@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 # Import all ingester modules to trigger @register decorators
-from . import claude_code, clawdbot, chatgpt, chatgpt_export, cursor, gemini_cli  # noqa: F401
+from . import claude_code, clawdbot, chatgpt, chatgpt_export, cursor, gemini_cli, pi  # noqa: F401
 from .registry import get_all_ingesters
 
 
