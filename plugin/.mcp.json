@@ -2,7 +2,7 @@
   "mcpServers": {
     "brain": {
       "command": "uvx",
-      "args": ["brain-mcp==2.0.0b1", "serve"],
+      "args": ["brain-mcp==2.0.0b2", "serve"],
       "env": { "BRAIN_HOME": "${user_config.brain_home}" }
     }
   }

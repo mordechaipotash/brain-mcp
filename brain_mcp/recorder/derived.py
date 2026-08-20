@@ -135,7 +135,7 @@ def search_fts(query: str, limit: int = 10, min_rank: float = 0.0,
         c.execute("LOAD fts;")
         rows = c.execute(
             f"""
-            SELECT msg_id, agent, session_id, role, model, text, event_time, captured_at,
+            SELECT msg_id, agent, session_id, role, model, text, CAST(event_time AS VARCHAR) AS event_time, CAST(captured_at AS VARCHAR) AS captured_at,
                    file_id, witness_gen, line_no,
                    fts_derived_messages.match_bm25(msg_id, ?) AS rank
             FROM derived.messages

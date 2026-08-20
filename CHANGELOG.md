@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.0b2] — 2026-08-20 — fix: search crashed without pytz
+
+b1's search/recent/sessions/health fetched TIMESTAMPTZ columns, and duckdb's Python
+API requires pytz to materialize those — present transitively in every dev venv,
+absent in a clean install. Caught by a stranger-test of the published wheel against
+a real 767-session corpus. Fixed by casting timestamps to VARCHAR at the SQL
+boundary — the mcp+duckdb-only dependency claim stays true.
+
 ## [2.0.0b1] — 2026-08-20 — THE RECORDER
 
 A rebuild around one principle: capture the bytes first; derive everything else.

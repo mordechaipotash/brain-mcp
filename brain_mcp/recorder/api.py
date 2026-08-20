@@ -72,7 +72,7 @@ def _citation(row: dict) -> dict:
 def _coverage() -> dict:
     with read_conn() as c:
         rows = c.execute(
-            "SELECT agent, count(*), min(event_time), max(event_time) "
+            "SELECT agent, count(*), CAST(min(event_time) AS VARCHAR), CAST(max(event_time) AS VARCHAR) "
             "FROM derived.messages GROUP BY agent"
         ).fetchall()
         total = c.execute("SELECT count(*) FROM derived.messages").fetchone()[0]
@@ -159,7 +159,7 @@ def recent(hours: int = 24, agent: str | None = None, role: str | None = None,
         where.append("role = ?"); params.append(role)
     with read_conn() as c:
         rows = c.execute(
-            f"SELECT msg_id, agent, session_id, role, model, text, event_time, captured_at, "
+            f"SELECT msg_id, agent, session_id, role, model, text, CAST(event_time AS VARCHAR), CAST(captured_at AS VARCHAR), "
             f"file_id, witness_gen, line_no FROM derived.messages "
             f"WHERE {' AND '.join(where)} ORDER BY event_time DESC LIMIT {int(limit)}",
             params).fetchall()
@@ -187,7 +187,7 @@ def sessions(date: str | None = None, agent: str | None = None, limit: int = 50)
     w = ("WHERE " + " AND ".join(where)) if where else ""
     with read_conn() as c:
         rows = c.execute(
-            f"SELECT agent, session_id, witness_gen, min(event_time), max(event_time), "
+            f"SELECT agent, session_id, witness_gen, CAST(min(event_time) AS VARCHAR), CAST(max(event_time) AS VARCHAR), "
             f"count(*), sum(CASE WHEN role='user' THEN 1 ELSE 0 END) "
             f"FROM derived.messages {w} GROUP BY 1,2,3 ORDER BY 4 DESC LIMIT {int(limit)}",
             params).fetchall()
@@ -223,7 +223,7 @@ def health() -> dict:
                 origin_newest = datetime.fromtimestamp(max(mts), tz=timezone.utc)
         with read_conn() as c:
             floor_last = c.execute(
-                "SELECT max(captured_at) FROM floor.raw_lines WHERE lane = ?", [l["lane"]]
+                "SELECT CAST(max(captured_at) AS VARCHAR) FROM floor.raw_lines WHERE lane = ?", [l["lane"]]
             ).fetchone()[0]
         entry["origin_path"] = root
         entry["origin_newest"] = str(origin_newest) if origin_newest else None
@@ -238,7 +238,9 @@ def health() -> dict:
                          reason="origin has content; floor has never captured this lane")
             counts["stale"] += 1
         else:
-            fl = floor_last if floor_last.tzinfo else floor_last.replace(tzinfo=timezone.utc)
+            fl = datetime.fromisoformat(str(floor_last))  # VARCHAR from SQL (pytz-free path)
+            if fl.tzinfo is None:
+                fl = fl.replace(tzinfo=timezone.utc)
             gap = (origin_newest - fl).total_seconds()
             entry["staleness_seconds"] = max(0, int(gap))
             if gap <= grace:
