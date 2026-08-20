@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brain-mcp"
-version = "1.0.0b1"
+version = "1.0.0b2"
 description = "Transportable AI memory — MCP server for the Bob protocol. Local-only, no cloud, no embeddings."
 readme = "README.md"
 license = {text = "MIT"}
@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "mcp>=1.0",
+    "mcp>=1.0,<2",
     "duckdb>=1.0",
 ]
 

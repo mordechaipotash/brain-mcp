@@ -4,8 +4,6 @@
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 # Import all ingester modules to trigger @register decorators
 from . import claude_code, clawdbot, chatgpt, chatgpt_export, cursor, gemini_cli, pi  # noqa: F401
 from .registry import get_all_ingesters
@@ -48,6 +46,7 @@ def run_all_ingesters(cfg) -> int:
 
     if all_records:
         cfg.data_dir.mkdir(parents=True, exist_ok=True)
+        import pandas as pd
         df = pd.DataFrame(all_records)
         parquet_path = cfg.parquet_path
         df.to_parquet(parquet_path, index=False)

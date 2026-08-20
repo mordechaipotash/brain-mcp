@@ -19,7 +19,6 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
 
-import yaml
 
 # Python 3.11+ has tomllib built-in
 try:
@@ -240,7 +239,7 @@ def _load_raw(path: Path) -> dict:
     else:
         # YAML (default for .yaml, .yml, or unknown)
         with open(path) as f:
-            return yaml.safe_load(f) or {}
+            return __import__("yaml").safe_load(f) or {}
 
 
 def load_config(config_path: Optional[str] = None) -> BrainConfig:

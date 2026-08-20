@@ -1,6 +1,17 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.0-beta.2] — 2026-08-20 — hotfix: unbroken installs, telemetry removed, CI green
+
+### Fixed
+- **Fresh installs crashed since 2026-07-28**: `mcp` 2.0.0 removed the `mcp.server.fastmcp`
+  import path and the pin was unbounded. Now `mcp>=1.0,<2` (v2 will target the new SDK).
+- **CI red since May**: top-level `yaml`/`pandas` imports fired on any package import even
+  under the 2-dep install; now lazy. Test workflow installs `.[dev,legacy]`. 44/44 green.
+- Version skew: `__version__` now matches the package version.
+
+### Removed
+- **Telemetry, entirely.** `brain_mcp/telemetry.py` is a no-op shim; the hardcoded ingest
+  endpoint/key it carried is retired. Zero network calls at runtime.
 
 ### Added
 - **Pi ingester** (`brain_mcp/ingest/pi.py`) — Pi (pi.ai coding agent) sessions from
