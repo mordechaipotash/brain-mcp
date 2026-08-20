@@ -1,2 +1,2 @@
-"""brain-mcp — Turn your AI conversations into a searchable second brain."""
-__version__ = "1.0.0b2"
+"""brain-mcp — THE RECORDER — capture, keep, and cite your AI conversation history."""
+__version__ = "2.0.0b1"

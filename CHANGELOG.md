@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.0.0b1] — 2026-08-20 — THE RECORDER
+
+A rebuild around one principle: capture the bytes first; derive everything else.
+
+### Added
+- **The floor**: `~/.brain/lake/<lane>/<session>.jsonl` — append-only session files,
+  byte-identical to the originals, sha256 manifest, witness generations on rewrite.
+- **Capture at source**: CC Stop/SessionEnd/PreCompact hooks (line-delta spool,
+  store-and-forward drain) + a 60s poll-scanner for Codex and Pi. Shared identity —
+  hook and scanner can never double-ingest.
+- **7 MCP tools on the mcp 2.x SDK** (spec 2026-07-28): brain_search (cited-or-abstain),
+  brain_get (sha-verified raw lines), brain_recent, brain_sessions, brain_health
+  (unknown ≠ healthy), brain_capture_status, brain_backup (re-hash verified).
+- **CLI**: record · install · uninstall · health · backup · redact · migrate-v1 · doctor · serve.
+- **Claude Code plugin** (`plugin/`) shipping hooks + server in one install.
+
+### Removed
+- The legacy 25-tool server, dashboard, embed and summarize pipelines, the v1 CLI,
+  and the bob-protocol wrapper (server_v1). v1 data imports via `migrate-v1`.
+  A claim that cannot carry a line-span citation is not a claim this server makes.
+
 ## [1.0.0-beta.2] — 2026-08-20 — hotfix: unbroken installs, telemetry removed, CI green
 
 ### Fixed

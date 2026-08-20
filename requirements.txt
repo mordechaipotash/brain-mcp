@@ -1,7 +1,0 @@
-mcp>=1.0
-lancedb>=0.20
-duckdb>=1.0
-pandas>=2.0
-pyarrow>=15.0
-sentence-transformers>=2.0
-pyyaml

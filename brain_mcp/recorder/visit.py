@@ -30,8 +30,12 @@ def _sha256(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
-def file_identity(lane: str, agent: str, abs_path: str) -> str:
-    return _sha256(f"{machine_id()}:{agent}:{abs_path}".encode())[:32]
+def file_identity(lane: str, agent: str, session: str) -> str:
+    """Identity is (machine, lane, session) — the session uuid is the invariant
+    (gravity's 'thing' lesson). Hook and scanner MUST converge on one identity
+    even though the hook doesn't know the origin path; abs_path is informational
+    and upgraded when the scanner sees the real file."""
+    return _sha256(f"{machine_id()}:{lane}:{session}".encode())[:32]
 
 
 def _event_time(raw: bytes) -> str | None:
@@ -139,7 +143,7 @@ def ingest_chunk(
         }
     )
 
-    fid = file_identity(lane, agent, origin_path)
+    fid = file_identity(lane, agent, session)
     rows = []
     off = base_offset
     for i, raw_nl in enumerate(lines):
@@ -160,6 +164,12 @@ def ingest_chunk(
             "INSERT INTO floor.files VALUES (?,?,?,?,?,?, now()) ON CONFLICT DO NOTHING",
             [fid, machine_id(), agent, lane, origin_path, session],
         )
+        # upgrade placeholder provenance once a real origin path is known
+        if not origin_path.startswith("spool://"):
+            c.execute(
+                "UPDATE floor.files SET abs_path = ? WHERE file_id = ? AND abs_path LIKE 'spool://%'",
+                [origin_path, fid],
+            )
         c.executemany(
             "INSERT INTO floor.raw_lines VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
             rows,

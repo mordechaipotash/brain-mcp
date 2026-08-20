@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brain-mcp"
-version = "1.0.0b2"
+version = "2.0.0b1"
 description = "Transportable AI memory — MCP server for the Bob protocol. Local-only, no cloud, no embeddings."
 readme = "README.md"
 license = {text = "MIT"}
@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "mcp>=1.0,<2",
+    "mcp>=2,<3",
     "duckdb>=1.0",
 ]
 
@@ -32,11 +32,10 @@ dependencies = [
 # parquets via duckdb. The legacy entry points + cli stay in the wheel for
 # v0.x-compatible imports but are no longer the install default.
 [project.optional-dependencies]
-legacy = ["lancedb>=0.20", "pandas>=2.0", "pyarrow>=15.0", "pyyaml", "rich>=13.0", "pytz", "tomli-w>=1.0"]
 dev = ["pytest>=7.0", "build", "twine"]
 
 [project.scripts]
-brain-mcp = "brain_mcp.server_v1:main"
+brain-mcp = "brain_mcp.recorder.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/mordechaipotash/brain-mcp"
