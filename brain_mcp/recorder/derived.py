@@ -80,15 +80,19 @@ FROM dialects.v_cc
 WHERE ev_type IN ('user','assistant') AND NOT coalesce(is_sidechain, false)
   AND role IN ('user','assistant')
 UNION ALL BY NAME
-SELECT 'codex:'||session_id||':'||witness_gen||':'||line_no,
-       'codex', session_id, role, NULL AS model,
-       derived.text_of(content), event_time, captured_at, file_id, witness_gen, line_no
+SELECT 'codex:'||session_id||':'||witness_gen||':'||line_no AS msg_id,
+       'codex' AS agent, session_id AS session_id, role AS role, NULL AS model,
+       derived.text_of(content) AS text, event_time AS event_time,
+       captured_at AS captured_at, file_id AS file_id,
+       witness_gen AS witness_gen, line_no AS line_no
 FROM dialects.v_codex
 WHERE envelope_type='response_item' AND body_type='message' AND role IN ('user','assistant')
 UNION ALL BY NAME
-SELECT 'pi:'||session_id||':'||witness_gen||':'||line_no,
-       'pi', session_id, role, model,
-       derived.text_of(content), event_time, captured_at, file_id, witness_gen, line_no
+SELECT 'pi:'||session_id||':'||witness_gen||':'||line_no AS msg_id,
+       'pi' AS agent, session_id AS session_id, role AS role, model AS model,
+       derived.text_of(content) AS text, event_time AS event_time,
+       captured_at AS captured_at, file_id AS file_id,
+       witness_gen AS witness_gen, line_no AS line_no
 FROM dialects.v_pi
 WHERE ev_type='message' AND role IN ('user','assistant');
 
