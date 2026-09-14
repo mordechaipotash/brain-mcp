@@ -134,8 +134,27 @@ brain-mcp doctor                  # capture status, health, fts cache, the recei
 brain-mcp restore [<id>] [--list] [--to DIR] [--dry-run]   # put a deleted session back
 brain-mcp redact <file> --lines A B --reason "..."   # tombstone a secret; audited in manifest
 brain-mcp migrate-v1 <all_conversations.parquet>     # import v1 data (marked v1_derived)
+brain-mcp import-chatgpt <conversations.json|dir>    # a ChatGPT export → the chatgpt_export lane
 brain-mcp uninstall               # removes hooks + scheduler; your floor is KEPT
 ```
+
+## ChatGPT
+
+ChatGPT keeps no local session files, so there is nothing for a lane to watch. Its history
+enters through a one-time export instead:
+
+1. ChatGPT → Settings → Data Controls → Export Data, then download the emailed ZIP.
+2. Unzip it. Large accounts are split into `conversations-000.json`, `-001.json`, and so on.
+3. `brain-mcp import-chatgpt ~/Downloads/chatgpt-export/`
+
+The converter writes one `<conversation_id>.jsonl` per conversation into
+`~/.brain/imports/chatgpt/` — a manufactured origin the `chatgpt_export` watch lane then
+captures like any other. Re-running over an unchanged export rewrites nothing, so it is safe
+to repeat after each new export; only new and changed conversations move.
+
+The export's `mapping` is a tree: a regenerated answer is a sibling branch, not a
+replacement. Every message node is emitted, ordered by its own clock, with `parent_id`
+preserved — so no branch is silently dropped and any root-to-leaf path stays reconstructable.
 
 ## v1 → v2
 
@@ -146,6 +165,47 @@ structurally impossible. v1's 25 tools became 7: the synthesis tools ("cognitive
 this server makes. Migration: `brain-mcp migrate-v1` — v1 rows are kept, marked as derived,
 and floor-backed rows win wherever the source still exists.
 
-Windows: out of scope for v2.0. Scheduling is LaunchAgent (macOS) / systemd user timer (Linux).
+## Scheduling
+
+`brain-mcp install` writes a 60-second LaunchAgent on macOS. On Linux it does **not** install
+anything — it prints a reminder, and the timer is yours to create. Without it the hooks keep
+filling the spool and nothing ever drains it, so `brain-mcp health` goes stale while capture
+looks fine. The two units:
+
+```ini
+# ~/.config/systemd/user/brain-mcp-record.service
+[Unit]
+Description=brain-mcp capture tick (drain spool, scan lanes, refresh index)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/brain-mcp record
+TimeoutStartSec=600
+Nice=10
+IOSchedulingClass=idle
+```
+
+```ini
+# ~/.config/systemd/user/brain-mcp-record.timer
+[Unit]
+Description=Run brain-mcp capture tick every 60 seconds
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=brain-mcp-record.service
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now brain-mcp-record.timer
+loginctl enable-linger "$USER"   # keep recording when you are not logged in
+```
+
+Windows: out of scope for v2.0.
 
 MIT.

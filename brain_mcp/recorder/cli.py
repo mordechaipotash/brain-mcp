@@ -1,5 +1,5 @@
 """brain-mcp v2 CLI — record · install · uninstall · health · backup · redact ·
-migrate-v1 · restore · doctor · serve.
+migrate-v1 · restore · import-chatgpt · doctor · serve.
 
 Every verb prints what it measured. Windows is out of scope for v2.0 (stated,
 not implied). macOS scheduling = LaunchAgent; Linux = systemd user timer.
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .paths import brain_home, ensure_layout
 
-LANES = ["cc_transcript", "codex_rollout", "pi_session", "cc_sessiondir"]
+LANES = ["cc_transcript", "codex_rollout", "pi_session", "cc_sessiondir", "chatgpt_export"]
 PLIST_LABEL = "com.brainmcp.record"
 
 
@@ -332,6 +332,37 @@ def cmd_restore(args) -> int:
     return 0 if r.get("ok") else 3
 
 
+def cmd_import_chatgpt(args) -> int:
+    """Convert a ChatGPT export into the lane origin, then capture it."""
+    _init()
+    from .import_chatgpt import convert
+
+    sources = [Path(s).expanduser() for s in args.source]
+    missing = [str(s) for s in sources if not s.exists()]
+    if missing:
+        print(f"no such path: {', '.join(missing)}", file=sys.stderr)
+        return 2
+
+    census = convert(sources)
+    if census["errors"]:
+        for e in census["errors"]:
+            print(f"warning: {e}", file=sys.stderr)
+    if not census["conversations"]:
+        print(json.dumps({"import": census}, indent=2))
+        print("nothing to capture: no conversations found in the export", file=sys.stderr)
+        return 1
+
+    # An import is not done until the floor holds it.
+    from .scanner import scan_tick
+    from . import derived
+
+    scan = scan_tick(only_lane="chatgpt_export")
+    refreshed = derived.refresh()
+    print(json.dumps({"import": census, "scan": scan, "derived": refreshed},
+                     indent=2, default=str))
+    return 0
+
+
 def cmd_serve(args) -> int:  # pragma: no cover
     from .server import main as serve_main
 
@@ -390,6 +421,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--accept-redacted", action="store_true",
                    help="restore even if the floor copy carries redaction tombstones")
     p.set_defaults(fn=cmd_restore)
+
+    p = sub.add_parser("import-chatgpt",
+                       help="convert a ChatGPT data export into the chatgpt_export lane")
+    p.add_argument("source", nargs="+",
+                   help="conversations.json, or a directory holding conversations*.json")
+    p.set_defaults(fn=cmd_import_chatgpt)
 
     p = sub.add_parser("serve", help="run the MCP server (stdio)")
     p.set_defaults(fn=cmd_serve)

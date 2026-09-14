@@ -24,6 +24,7 @@ _SESSION_PATTERNS = {
     "cc_transcript": re.compile(rf"({_UUID})\.jsonl$"),
     "codex_rollout": re.compile(rf"rollout-.*?({_UUID})\.jsonl$"),
     "pi_session": re.compile(rf"({_UUID})\.jsonl$"),
+    "chatgpt_export": re.compile(rf"({_UUID})\.jsonl$"),
 }
 # cc_sessiondir keys a file by its path under the projects root: <project>/<session>/<rest>.
 # The second component must be a session uuid — that is what makes it a session's folder.
@@ -150,7 +151,8 @@ def main() -> None:  # pragma: no cover — CLI shim
     from .floor_db import init_db
     from .paths import ensure_layout
 
-    ensure_layout([l["lane"] for l in [] ] or ["cc_transcript", "codex_rollout", "pi_session"])
+    ensure_layout([l["lane"] for l in [] ]
+                  or ["cc_transcript", "codex_rollout", "pi_session", "chatgpt_export"])
     init_db()
     print(json.dumps(scan_tick(), indent=2, default=str))
 
