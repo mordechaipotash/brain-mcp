@@ -1,6 +1,6 @@
 {
   "name": "brain",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "THE RECORDER \u2014 capture your Claude Code sessions at source (Stop/SessionEnd hooks), keep the bytes forever, and query them through 7 cited-or-abstain MCP tools.",
   "author": {
     "name": "Mordechai Potash",

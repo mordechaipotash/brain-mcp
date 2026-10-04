@@ -1,5 +1,82 @@
 # Changelog
 
+## [2.1.0] — 2026-10-04 — the receipt: what the agents deleted, and putting it back
+
+### Added
+- **The whole session, not just the transcript.** A Claude Code session is a folder:
+  subagent and workflow transcripts, their `.meta.json`, and `tool-results/` live in
+  `<project>/<session>/` beside the `.jsonl`. Through 2.0.0 none of it was recorded — the
+  session pattern matched **0 of 1,231** subagent transcripts on the author's machine (72% of
+  Claude Code's files). The new `cc_sessiondir` lane matches **1,231 of 1,231**, and **3,046 of
+  3,288** files under project folders (the rest are `memory/` folders, not sessions). The lake
+  mirrors the origin's layout: `lake/cc_sessiondir/<project>/<session>/...`. Non-line files
+  are captured whole (they rarely end in a newline, so the line path would wait forever);
+  a changed file opens a new generation and the old is kept. Scanner-only, like Codex: a
+  60-second scan sits well inside the 30-day cleanup.
+- **The receipt.** `brain_health` (and `brain-mcp health` / `doctor`) now report files whose
+  origin is gone — deleted or moved — while the floor still holds them: *"1 session(s) and
+  4 file(s) are gone from where the agent kept them; the floor holds every one."* `record`
+  notices each one, re-hashes its floor bytes against every chunk the manifest recorded at
+  capture, and logs an `origin_gone` event, so the dates are when the recorder noticed —
+  measured — and the read-only MCP tool writes nothing. A tampered floor copy reports
+  `verified: false`.
+- **`brain-mcp restore <session>`** puts a session — transcript and folder — back where its
+  agent will find it, byte-exact, then prints `cd <cwd> && claude --resume <id>`. All or
+  nothing; never overwrites different bytes (identical is a no-op); `--dry-run`, `--to DIR`,
+  `--list`; a copy carrying redaction tombstones needs `--accept-redacted`. CLI only — no MCP
+  tool writes outside the floor. Proven end to end with a real Claude Code session that
+  spawned a subagent and saved a tool output: deleted → `claude --resume` said "No
+  conversation found" → `brain-mcp restore` wrote 4 files, each byte-identical to what
+  Claude Code had written → the resumed session answered with its codeword and its
+  subagent's reply.
+- **`since` / `until`** on `brain_search` (a bare date for `until` includes the day). The
+  abstention used to tell you to widen a date range that did not exist.
+
+### Changed
+- **`role="user"` means what the person wrote.** Text the harness injects under the user
+  role — skill bodies, reminders, slash-command wrappers, task notifications, compaction
+  summaries — is excluded by default (`include_machine=True` brings it back, which is the
+  2.0.0 behaviour). On the author's 30 newest sessions that was **41.1%** of user rows. The
+  Claude Code rule is `is_him()` from the author's m-plugin `hooks/lib/turns.py`, whose
+  exclusions were earned by replaying transcripts; against it the new flag agrees on
+  **880 of 894** rows, and all 14 differences are compaction summaries, which this release
+  also treats as machine text (as the author's own corpus does). For Codex, injected context
+  blocks (`<environment_context>`, `<recommended_plugins>`, `AGENTS.md`, …; 67% of the
+  author's Codex user messages) are excluded, and a realtime voice delegation keeps only its
+  spoken `<input>`.
+- Subagent transcripts are recorded but kept out of default search, `brain_recent` and
+  `brain_sessions` (`include_subagents=True` to include them): agent-to-agent work is not
+  the person's conversation. A subagent hit belongs to its parent session and cites its own
+  nested floor file.
+- `brain_sessions` counts only the person's own turns.
+- **Network, said plainly.** "Zero network calls at runtime" was false: building the index
+  makes DuckDB download its `fts` extension once. `brain-mcp install` now does that fetch up
+  front and says so; `doctor` reports whether it is cached. Still no HTTP client in the
+  package.
+- The scanner reads each lane's last-seen sizes once per tick instead of opening DuckDB per
+  file: an unchanged tick over 3,046 files went from ~16 s to ~0.3 s (measured on 300 real
+  files: 1.58 s → 0.028 s).
+
+### Upgrading
+- A 2.0.0 index gains three columns (`human_authored`, `is_subagent`, `lake_file`) on the
+  first 2.1 `record`. Rows the floor can re-create are re-derived, so the new flags are
+  computed, never defaulted; rows with no floor bytes behind them (migrate-v1) are kept with
+  `human_authored = (role = 'user')`. Proven from a PyPI 2.0.0 floor: 11 → 14 columns, and
+  `role="user"` on the test fixture went from 9 hits (machine text included) to 2.
+
+### Fixed
+- Caught by that upgrade proof: the new SQL carried regex escapes in a non-raw Python string
+  (`SyntaxWarning: invalid escape sequence '\s'` on every fresh install's first run). CI now
+  fails on any `SyntaxWarning`.
+
+### Tests
+- 47 (19 new): session-folder capture, human-authored text for Claude Code and Codex, the
+  date window, the receipt (including a tampered copy and "reading writes nothing"), every
+  restore rule, and the 2.0.0 upgrade. 18 of the 19 fail against 2.0.0; the upgrade test also
+  fails against 2.1 with 2.0.0's copy-every-row reshape. A shared fixture pins every lane to
+  a temp dir and refuses to run otherwise — the new lane had silently scanned the developer's
+  real `~/.claude` in the old fixtures. Green on DuckDB 1.3.0, 1.5.6, 1.6.0.dev and 2.0.0.dev.
+
 ## [2.0.0] — 2026-10-04 — stable: every recorded agent is searchable, and upgrades keep every row
 
 `pip install brain-mcp` and `uvx brain-mcp` now install the recorder. Until today they

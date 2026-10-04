@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brain-mcp"
-version = "2.0.0"
+version = "2.1.0"
 description = "The recorder for your AI conversations: byte-exact copies of your Claude Code, Codex and Pi sessions (Claude Code deletes its own after 30 days by default), searchable over MCP with cited-or-abstain recall. Local-only."
 readme = "README.md"
 license = {text = "MIT"}

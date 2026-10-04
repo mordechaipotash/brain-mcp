@@ -28,7 +28,7 @@ jobs:
           pip install -e ".[dev,legacy]"
 
       - name: Run tests
-        run: pytest tests/ -v
+        run: pytest tests/ -v -W error::SyntaxWarning
 
       # A "Verify SHELET skill manifests" step ran scripts/verify_skills.py here until 2026-08-20.
       # b1da38f (2.0.0b1, THE RECORDER) deleted both that script and the .claude/skills tree it

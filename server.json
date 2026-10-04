@@ -3,7 +3,7 @@
   "name": "io.github.mordechaipotash/brain-mcp",
   "title": "brain \u2014 the recorder",
   "description": "Records your Claude Code, Codex and Pi history before deletion. Cited-or-abstain recall.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "repository": {
     "url": "https://github.com/mordechaipotash/brain-mcp",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "brain-mcp",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "transport": {
         "type": "stdio"
       },
