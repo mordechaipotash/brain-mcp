@@ -146,7 +146,8 @@ enters through a one-time export instead:
 1. ChatGPT → Settings → Data Controls → Export Data, then download the emailed ZIP.
 2. `brain-mcp import-chatgpt ~/Downloads/chatgpt-export.zip` — the ZIP is read in place, nothing
    is extracted. Large accounts are split into `conversations-000.json`, `-001.json`, and so on;
-   all of them are read. An already unzipped folder or a single `conversations.json` works too.
+   all of them are read. An already unzipped folder (with the `conversations*.json` files at its top level) or a single
+   `conversations.json` works too.
 
 The converter writes one `<conversation_id>.jsonl` per conversation into
 `~/.brain/imports/chatgpt/` — a manufactured origin the `chatgpt_export` watch lane then

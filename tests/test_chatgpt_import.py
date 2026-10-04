@@ -328,28 +328,104 @@ class TestConvertZip:
         assert census["conversations"] == 0
         assert any("no conversations*.json" in e for e in census["errors"])
 
-    def test_corrupt_zip_is_reported_not_raised(self, tmp_path):
+    def test_truncated_download_is_reported_as_a_broken_archive(self, tmp_path):
+        """No end-of-archive record: still a ZIP problem, not a JSON problem."""
         from brain_mcp.recorder.import_chatgpt import convert
 
-        bad = tmp_path / "export.zip"
-        bad.write_bytes(b"PK\x03\x04 truncated")
+        good = _zip(tmp_path, {"conversations.json": [_conv()]}).read_bytes()
+        bad = tmp_path / "cut.zip"
+        bad.write_bytes(good[: len(good) // 2])
 
         census = convert([bad], dest=tmp_path / "out")
 
         assert census["conversations"] == 0
-        assert census["errors"]
+        assert len(census["errors"]) == 1
+        assert "BadZipFile" in census["errors"][0]
 
-    def test_hostile_member_name_writes_nothing_outside_dest(self, tmp_path):
-        """Members are read, never extracted: a path-traversal name is just a name."""
+    def test_corrupt_compressed_member_is_reported_not_raised(self, tmp_path):
+        """A damaged deflate stream raises zlib.error, which must not escape."""
         from brain_mcp.recorder.import_chatgpt import convert
 
+        archive = tmp_path / "export.zip"
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("conversations.json", json.dumps([_conv()] * 50))
+        raw = bytearray(archive.read_bytes())
+        start = raw.index(b"conversations.json") + len("conversations.json")
+        for i in range(start + 4, start + 24):   # inside the compressed payload
+            raw[i] ^= 0xFF
+        archive.write_bytes(bytes(raw))
+
+        census = convert([archive], dest=tmp_path / "out")
+
+        assert census["conversations"] == 0
+        assert census["errors"] and "conversations.json" in census["errors"][0]
+
+    def test_duplicate_member_names_are_both_read(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = tmp_path / "dup.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("conversations.json", json.dumps([_conv()]))
+            zf.writestr("conversations.json",
+                        json.dumps([_conv(id="99999999-8888-7777-6666-555555555555")]))
+
+        dest = tmp_path / "out"
+        census = convert([archive], dest=dest)
+
+        assert census["conversations"] == 2
+        assert {p.stem for p in dest.glob("*.jsonl")} == {
+            "11111111-2222-3333-4444-555555555555",
+            "99999999-8888-7777-6666-555555555555",
+        }
+
+    def test_backslash_member_path_is_found(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = _zip(tmp_path, {"export\\conversations.json": [_conv()]})
+
+        census = convert([archive], dest=tmp_path / "out")
+
+        assert census["conversations"] == 1
+
+    def test_utf8_bom_is_tolerated(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = _zip(tmp_path, {"conversations.json": b"\xef\xbb\xbf" + json.dumps([_conv()]).encode()})
+
+        census = convert([archive], dest=tmp_path / "out")
+
+        assert census["conversations"] == 1 and census["errors"] == []
+
+    def test_directory_without_exports_points_at_the_zip(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        _zip(tmp_path, {"conversations.json": [_conv()]})
+
+        census = convert([tmp_path], dest=tmp_path / "out")
+
+        assert census["conversations"] == 0
+        assert any("pass the .zip itself" in e for e in census["errors"])
+
+    def test_members_are_read_never_extracted(self, tmp_path, monkeypatch):
+        """A hostile member name is just a name: nothing is ever extracted."""
+        import zipfile as zf_mod
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        def boom(*a, **k):
+            raise AssertionError("extract must not be used")
+
+        monkeypatch.setattr(zf_mod.ZipFile, "extract", boom)
+        monkeypatch.setattr(zf_mod.ZipFile, "extractall", boom)
         archive = _zip(tmp_path, {"../conversations.json": [_conv()]})
         dest = tmp_path / "out"
+        before = {p for p in tmp_path.rglob("*")}
 
-        convert([archive], dest=dest)
+        census = convert([archive], dest=dest)
 
+        assert census["conversations"] == 1
+        created = {p for p in tmp_path.rglob("*")} - before
+        assert all(dest == p or dest in p.parents for p in created)
         assert not (tmp_path.parent / "conversations.json").exists()
-        assert [p.name for p in dest.iterdir()] == ["11111111-2222-3333-4444-555555555555.jsonl"]
 
 
 class TestLaneWiring:

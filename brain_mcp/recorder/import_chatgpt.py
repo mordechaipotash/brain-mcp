@@ -134,8 +134,21 @@ def conversation_lines(conv: dict) -> tuple[str, list[str]]:
 
 
 def _is_conversations_json(name: str) -> bool:
-    base = PurePosixPath(name).name
+    # Some Windows tools write backslash separators into member names.
+    base = PurePosixPath(name.replace("\\", "/")).name
     return fnmatch.fnmatchcase(base, "conversations*.json")
+
+
+def _looks_like_zip(path: Path) -> bool:
+    """A real ZIP, or something that claims to be one (so a truncated download
+    is reported as a broken archive rather than as malformed JSON)."""
+    if path.suffix.lower() == ".zip" or zipfile.is_zipfile(path):
+        return True
+    try:
+        with path.open("rb") as fh:
+            return fh.read(4) == b"PK\x03\x04"
+    except OSError:
+        return False
 
 
 def _export_chunks(path: Path) -> Iterator[tuple[str, bytes | None, str | None]]:
@@ -145,23 +158,33 @@ def _export_chunks(path: Path) -> Iterator[tuple[str, bytes | None, str | None]]
     ChatGPT hands out. ZIP members are read in memory and never extracted, so a
     hostile member name cannot write anywhere.
     """
-    if path.is_file() and zipfile.is_zipfile(path):
+    if path.is_file() and _looks_like_zip(path):
         try:
             with zipfile.ZipFile(path) as zf:
-                members = sorted(n for n in zf.namelist()
-                                 if not n.endswith("/") and _is_conversations_json(n))
+                # Iterate ZipInfo, not names: a duplicated name would otherwise
+                # resolve to its last entry twice and silently drop the first.
+                members = sorted((i for i in zf.infolist()
+                                  if not i.is_dir() and _is_conversations_json(i.filename)),
+                                 key=lambda i: (i.filename, i.header_offset))
                 if not members:
                     yield path.name, None, "no conversations*.json in archive"
-                for member in members:
+                for info in members:
+                    label = f"{path.name}:{info.filename}"
                     try:
-                        yield f"{path.name}:{member}", zf.read(member), None
-                    except (zipfile.BadZipFile, RuntimeError, OSError) as e:
-                        yield f"{path.name}:{member}", None, f"{type(e).__name__}: {e}"
-        except (zipfile.BadZipFile, OSError) as e:
-            yield path.name, None, f"{type(e).__name__}: {e}"
+                        yield label, zf.read(info), None
+                    except Exception as e:  # zlib.error, EOFError, LZMAError, RuntimeError, …
+                        yield label, None, f"{type(e).__name__}: {e}"
+        except Exception as e:  # BadZipFile (truncated download), OSError, NotImplementedError, …
+            yield path.name, None, f"{type(e).__name__}: {e} (incomplete download?)"
         return
 
-    files = [path] if path.is_file() else sorted(path.glob("conversations*.json"))
+    if path.is_dir():
+        files = sorted(path.glob("conversations*.json"))
+        if not files:
+            hint = " — pass the .zip itself" if any(path.glob("*.zip")) else ""
+            yield path.name, None, f"no conversations*.json in directory{hint}"
+    else:
+        files = [path]
     for f in files:
         try:
             yield f.name, f.read_bytes(), None
@@ -187,10 +210,12 @@ def convert(sources: list[Path], dest: Path | None = None) -> dict:
                 census["errors"].append(f"{name}: {error}")
                 continue
             try:
-                conversations = json.loads(data.decode("utf-8"))
+                conversations = json.loads(data.decode("utf-8-sig"))
             except (UnicodeDecodeError, json.JSONDecodeError) as e:
                 census["errors"].append(f"{name}: {type(e).__name__}: {e}")
                 continue
+            finally:
+                del data  # an export can exceed 1 GB; do not hold the raw bytes too
             if not isinstance(conversations, list):
                 census["errors"].append(f"{name}: expected a JSON array of conversations")
                 continue
