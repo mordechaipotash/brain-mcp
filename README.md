@@ -19,7 +19,7 @@ with `sed` and `shasum`.
 ## Install
 
 ```bash
-pipx install brain-mcp --pre     # or: uvx brain-mcp
+pipx install brain-mcp           # or: uvx brain-mcp
 brain-mcp install cc             # CC hooks + 60-second scheduler
 brain-mcp serve                  # the MCP server (stdio) — add to your client config
 ```

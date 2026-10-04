@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brain-mcp"
-version = "2.0.0b3"
-description = "Transportable AI memory — MCP server for the Bob protocol. Local-only, no cloud, no embeddings."
+version = "2.0.0"
+description = "The recorder for your AI conversations: byte-exact copies of your Claude Code, Codex and Pi sessions (Claude Code deletes its own after 30 days by default), searchable over MCP with cited-or-abstain recall. Local-only."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [{name = "Mordechai Potash"}]
-keywords = ["mcp", "ai-memory", "bob", "duckdb", "local-first", "claude", "chatgpt", "cursor", "codex"]
+keywords = ["mcp", "mcp-server", "ai-memory", "recorder", "claude-code", "codex", "duckdb", "local-first"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
@@ -22,15 +22,14 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+# duckdb: >=1.3 for the `lambda x:` syntax (issue #8); <2 caps the major, the same
+# shape as mcp<3 after an unbounded mcp>=1.0 crashed every fresh install for three
+# weeks (0.4.1, 2026-08-20). The suite also passes on 2.0.0.dev2610011535 today.
 dependencies = [
     "mcp>=2,<3",
-    "duckdb>=1.0",
+    "duckdb>=1.3,<2",
 ]
 
-# v1.0 drops the heavy v0.x deps (lancedb, pandas, pyarrow, fastembed, anthropic,
-# fastapi, jinja2, etc.) in favor of a thin server that reads Bob protocol
-# parquets via duckdb. The legacy entry points + cli stay in the wheel for
-# v0.x-compatible imports but are no longer the install default.
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "build", "twine"]
 
@@ -44,7 +43,3 @@ Repository = "https://github.com/mordechaipotash/brain-mcp"
 
 [tool.setuptools.packages.find]
 include = ["brain_mcp*"]
-
-[tool.setuptools.package-data]
-"brain_mcp.dashboard" = ["templates/**/*.html", "static/**/*"]
-"brain_mcp" = ["_prompts/*.txt"]

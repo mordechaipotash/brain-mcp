@@ -1,5 +1,41 @@
 # Changelog
 
+## [2.0.0] — 2026-10-04 — stable: every recorded agent is searchable, and upgrades keep every row
+
+`pip install brain-mcp` and `uvx brain-mcp` now install the recorder. Until today they
+installed 0.4.1, because every 2.x release was a pre-release; drop `--pre`, which also
+let pip pick DuckDB development builds for you.
+
+### Fixed
+- **Codex and Pi messages were invisible to search** (PR #9, thanks @sidey79). Their
+  branches of `derived.v_messages_all` had unnamed columns, so `UNION ALL BY NAME`
+  left `msg_id`, `agent` and `text` empty and none of their rows reached the index.
+- **DuckDB 1.6 broke `brain-mcp record`** (issue #8, thanks @sidey79). The text macro
+  used the `x -> …` lambda syntax DuckDB 1.6 rejects; it now uses `lambda x: …`.
+- **…and broke search a second way**, not in the report: DuckDB 1.6 refuses a WHERE
+  that names a side-effecting SELECT alias, which `match_bm25 … AS rank` is. The score
+  is now filtered outside a subquery.
+- **Upgrading from 2.0.0b1–b3 would have broken `record`.** The same unnamed columns
+  gave every b-series `derived.messages` 16 columns instead of 11. `refresh()` now
+  reshapes the table to the view's columns on first run, copying every row (rows from
+  `migrate-v1` have no floor bytes behind them and could not be re-derived), then
+  rebuilds the FTS index. Inserts name their columns instead of relying on position.
+- **`migrate-v1` failed on every b-series install** for the same reason; fixed by the
+  same guard.
+- **`install cc` missed capture hooks shipped by plugins** and could double-spool; it
+  now checks `~/.claude/plugins/**/hooks/hooks.json` as well as `settings.json`.
+
+### Changed
+- `duckdb>=1.3,<2` (was `>=1.0`). Tested on 1.3.0, 1.5.6, 1.6.0.dev379 and 2.0.0.dev.
+- Package description and keywords describe the recorder; the plugin pins
+  `brain-mcp==2.0.0`.
+
+### Tests
+- `tests/test_derived_agents.py`: Claude Code, Codex and Pi all searchable; a planted
+  b3-shaped table survives the upgrade with every row; `migrate-v1` on a fresh install;
+  the derived SQL loads with single-arrow lambdas disabled. All seven fail against
+  2.0.0b3, and the two upgrade tests fail against PR #9 without the reshape guard.
+
 ## [2.0.0b3] — 2026-08-20 — scan-secrets: the floor can now audit itself
 
 ### Added
