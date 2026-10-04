@@ -23,7 +23,7 @@ from pathlib import Path
 from . import manifest
 from .floor_db import write_conn
 from .machine import machine_id
-from .paths import lake_file
+from .paths import lake_blob, lake_file
 
 
 def _sha256(b: bytes) -> str:
@@ -257,3 +257,53 @@ def visit_origin(lane: str, agent: str, origin: Path, session: str) -> str:
         captured_at=captured_at, source="scan",
     )
     return "append" if n else "torn-wait"
+
+
+def visit_blob(lane: str, agent: str, origin: Path, key: str) -> str:
+    """One scanner visit to a NON-line file (a session folder's .meta.json, tool-results/*).
+
+    The line path cannot hold these: they rarely end in a newline, so visit_origin would
+    call them torn and wait forever. A blob is captured whole, byte-exact, at
+    lake/<lane>/<key>; a size change opens a new generation beside it (old kept), and the
+    manifest records the whole-file sha256 so a later reader can verify what it holds."""
+    st = origin.stat()
+    state = get_state(lane, key)
+    if state is not None and st.st_size == state["last_size"]:
+        return "unchanged"
+    data = origin.read_bytes()
+    sha = _sha256(data)
+    if state is not None and sha == state["prefix_sha256"]:
+        return "unchanged"
+    gen = 1 if state is None else state["witness_gen"] + 1
+    lf = lake_blob(lane, key, gen)
+    lf.parent.mkdir(parents=True, exist_ok=True)
+    if not (lf.exists() and _sha256(lf.read_bytes()) == sha):
+        tmp = lf.with_name("." + lf.name + ".tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, lf)
+    captured_at = datetime.now(timezone.utc).isoformat()
+    manifest.append(
+        {
+            "lane": lane, "agent": agent, "session": key, "gen": gen, "blob": True,
+            "bytes": len(data), "sha256": sha, "captured_at": captured_at,
+            "machine_id": machine_id(), "origin_path": str(origin), "source": "scan",
+        }
+    )
+    fid = file_identity(lane, agent, key)
+    with write_conn() as c:
+        c.execute(
+            "INSERT INTO floor.files VALUES (?,?,?,?,?,?, now()) ON CONFLICT DO NOTHING",
+            [fid, machine_id(), agent, lane, str(origin), key],
+        )
+        c.execute(
+            "INSERT INTO floor.ingest_state VALUES (?,?,?,?,?,?, now()) "
+            "ON CONFLICT (file_id) DO UPDATE SET witness_gen=excluded.witness_gen, "
+            "last_size=excluded.last_size, last_offset=excluded.last_offset, "
+            "last_line_no=excluded.last_line_no, prefix_sha256=excluded.prefix_sha256, updated_at=now()",
+            [fid, gen, len(data), len(data), 0, sha],
+        )
+        c.execute(
+            "INSERT INTO floor.witnesses VALUES (?, now(), ?, NULL, ?, NULL, 0)",
+            [fid, len(data), "first" if state is None else "rewrite"],
+        )
+    return "first" if state is None else "rewrite"

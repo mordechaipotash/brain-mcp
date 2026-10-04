@@ -40,7 +40,7 @@ def home(tmp_path, monkeypatch):
     }
     from brain_mcp.recorder import floor_db, paths
 
-    paths.ensure_layout(list(roots))
+    paths.ensure_layout(list(roots) + ["cc_sessiondir"])
     floor_db.init_db()
     with floor_db.write_conn() as c:
         for lane, (root, name, fixture) in roots.items():
@@ -48,6 +48,11 @@ def home(tmp_path, monkeypatch):
             shutil.copy(FIX / fixture, root / name)
             c.execute("UPDATE floor.lanes SET root_glob = ? WHERE lane = ?",
                       [str(root / "**/*.jsonl"), lane])
+        # every seeded lane must point inside tmp, or scan_tick() reads the real home
+        c.execute("UPDATE floor.lanes SET root_glob = ? WHERE lane = 'cc_sessiondir'",
+                  [str(tmp_path / "claude" / "*" / "*" / "**" / "*")])
+        unpinned = c.execute("SELECT lane FROM floor.lanes WHERE root_glob LIKE '~%'").fetchall()
+    assert not unpinned, f"lanes still pointing at the real home: {unpinned}"
     return Path(os.environ["BRAIN_HOME"])
 
 
@@ -86,10 +91,14 @@ class TestEveryAgentSearchable:
         assert agents == {"claude-code", "codex", "pi"}
         assert bad == 0
 
-    def test_view_has_exactly_eleven_named_columns(self, home):
+    def test_view_has_exactly_the_named_columns(self, home):
+        """PR #9's bug gave the view expression-named junk columns ("'codex'", ...).
+        Pin the exact list: 11 through 2.0.0, plus three in 2.1."""
         _record()
         cols = _columns("derived.v_messages_all")
-        assert len(cols) == 11, cols
+        assert cols == ["msg_id", "agent", "session_id", "role", "model", "text", "event_time",
+                        "captured_at", "file_id", "witness_gen", "line_no", "human_authored",
+                        "is_subagent", "lake_file"], cols
         assert cols == _columns("derived.messages")
 
 

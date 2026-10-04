@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import glob as _glob
 import hashlib
+import json
+import os
+import shlex
 import shutil
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -22,7 +25,8 @@ from pathlib import Path
 
 from . import derived
 from .floor_db import read_conn
-from .paths import brain_home, lake_dir, lake_file, manifest_path, spool_dir
+from . import manifest
+from .paths import brain_home, glob_root, lake_blob, lake_dir, lake_file, manifest_path, spool_dir
 
 
 def _now() -> str:
@@ -58,7 +62,7 @@ def _citation(row: dict) -> dict:
         return {"v1_derived": True, "note": "derived from v1 parquet — raw bytes not held",
                 "agent": row["agent"], "session_id": row["session_id"],
                 "ts": str(row["event_time"]) if row["event_time"] else None, "role": row["role"]}
-    rel = _lake_rel(row["agent"], row["session_id"], row["witness_gen"])
+    rel = row.get("lake_file") or _lake_rel(row["agent"], row["session_id"], row["witness_gen"])
     p = brain_home() / rel
     a = b = row["line_no"]
     sha = hashlib.sha256(_span(p, a, b)).hexdigest() if p.exists() else None
@@ -98,8 +102,14 @@ def _unwatched() -> list[str]:
 # ── 1. search ─────────────────────────────────────────────────────────────────
 
 def search(query: str, agent: str | None = None, role: str | None = None,
-           limit: int = 10, min_rank: float = 0.0, order: str = "rank") -> dict:
-    hits = derived.search_fts(query, limit=limit, min_rank=min_rank, agent=agent, role=role)
+           limit: int = 10, min_rank: float = 0.0, order: str = "rank",
+           since: str | None = None, until: str | None = None,
+           include_machine: bool = False, include_subagents: bool = False) -> dict:
+    hits = derived.search_fts(query, limit=limit, min_rank=min_rank, agent=agent, role=role,
+                              since=since, until=until, include_machine=include_machine,
+                              include_subagents=include_subagents)
+    scope = {"since": since, "until": until, "include_machine": include_machine,
+             "include_subagents": include_subagents}
     if order == "time_asc":
         hits.sort(key=lambda h: str(h["event_time"]))
     elif order == "time_desc":
@@ -109,15 +119,18 @@ def search(query: str, agent: str | None = None, role: str | None = None,
     if not hits:
         return {**env, "abstained": True,
                 "reason": f"no hit scored >= min_rank {min_rank} under fts_bm25 for query {query!r}",
-                "coverage": cov,
-                "hint": "absence here is evidence only about the lanes and dates in coverage; "
-                        "try other keywords or widen the date range", "hits": []}
+                "coverage": cov, "scope": scope,
+                "hint": "absence here is evidence only about the lanes, dates and scope searched; "
+                        "try other keywords, widen since/until, or set include_machine / "
+                        "include_subagents to search injected text and subagent transcripts",
+                "hits": []}
     out = []
     for h in hits:
         text = h["text"]
         excerpt = text if len(text) <= 600 else text[:600] + f"… (excerpt: 600 of {len(text)} chars — full via brain_get)"
         out.append({"excerpt": excerpt, "rank": round(h["rank"], 3), "citation": _citation(h)})
-    return {**env, "abstained": False, "ranker": "fts_bm25", "hits": out, "coverage": cov}
+    return {**env, "abstained": False, "ranker": "fts_bm25", "hits": out, "coverage": cov,
+            "scope": scope}
 
 
 # ── 2. get ────────────────────────────────────────────────────────────────────
@@ -150,21 +163,17 @@ def get(file: str, lines: list[int], expect_sha256: str | None = None, context: 
 # ── 3. recent ─────────────────────────────────────────────────────────────────
 
 def recent(hours: int = 24, agent: str | None = None, role: str | None = None,
-           limit: int = 20) -> dict:
-    since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    where, params = ["event_time >= ?"], [since]
-    if agent:
-        where.append("agent = ?"); params.append(agent)
-    if role:
-        where.append("role = ?"); params.append(role)
+           limit: int = 20, include_machine: bool = False, include_subagents: bool = False) -> dict:
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    where, params = derived.scope_filters(agent, role, since, None, include_machine, include_subagents)
     with read_conn() as c:
         rows = c.execute(
             f"SELECT msg_id, agent, session_id, role, model, text, CAST(event_time AS VARCHAR), CAST(captured_at AS VARCHAR), "
-            f"file_id, witness_gen, line_no FROM derived.messages "
+            f"file_id, witness_gen, line_no, lake_file FROM derived.messages "
             f"WHERE {' AND '.join(where)} ORDER BY event_time DESC LIMIT {int(limit)}",
             params).fetchall()
         cols = ["msg_id","agent","session_id","role","model","text","event_time","captured_at",
-                "file_id","witness_gen","line_no"]
+                "file_id","witness_gen","line_no","lake_file"]
     hits = [dict(zip(cols, r)) for r in rows]
     cov = _coverage()
     env = _envelope(f"derived.messages where event_time >= now()-{hours}h", _unwatched())
@@ -179,7 +188,7 @@ def recent(hours: int = 24, agent: str | None = None, role: str | None = None,
 # ── 4. sessions ───────────────────────────────────────────────────────────────
 
 def sessions(date: str | None = None, agent: str | None = None, limit: int = 50) -> dict:
-    where, params = [], []
+    where, params = ["NOT coalesce(is_subagent, false)"], []
     if date:
         where.append("CAST(event_time AS DATE) = ?"); params.append(date)
     if agent:
@@ -188,7 +197,7 @@ def sessions(date: str | None = None, agent: str | None = None, limit: int = 50)
     with read_conn() as c:
         rows = c.execute(
             f"SELECT agent, session_id, witness_gen, CAST(min(event_time) AS VARCHAR), CAST(max(event_time) AS VARCHAR), "
-            f"count(*), sum(CASE WHEN role='user' THEN 1 ELSE 0 END) "
+            f"count(*), sum(CASE WHEN role='user' AND coalesce(human_authored, true) THEN 1 ELSE 0 END) "
             f"FROM derived.messages {w} GROUP BY 1,2,3 ORDER BY 4 DESC LIMIT {int(limit)}",
             params).fetchall()
     env = _envelope(f"derived.messages grouped by session{' for ' + date if date else ''}")
@@ -250,7 +259,219 @@ def health() -> dict:
         lanes_out.append(entry)
     env = _envelope("origin-vs-floor per lane; 'unknown' means unmeasured, not healthy, "
                     "and no summary relabels it", _unwatched())
-    return {**env, "lanes": lanes_out, "summary": counts}
+    return {**env, "lanes": lanes_out, "summary": counts, "receipt": receipt()}
+
+
+# ── 5b. the receipt: what the agents deleted, and whether the floor still holds it ──
+
+_MAIN_LANES = ("cc_transcript", "codex_rollout", "pi_session")
+
+
+def _manifest_index() -> dict:
+    """One pass over the manifest: the byte ranges each (lane, key, gen) was captured in,
+    whole-file shas for blobs, and the origin_gone events already recorded."""
+    chunks: dict[tuple, list] = {}
+    blobs: dict[tuple, str] = {}
+    gone: dict[str, dict] = {}
+    mp = manifest_path()
+    if mp.exists():
+        with open(mp, "rb") as f:
+            for raw in f:
+                try:
+                    e = json.loads(raw)
+                except Exception:
+                    continue
+                if e.get("event") == "origin_gone":
+                    gone.setdefault(e.get("file_id"), e)
+                elif e.get("blob"):
+                    blobs[(e.get("lane"), e.get("session"), e.get("gen"))] = e.get("sha256")
+                elif "chunk_sha256" in e:
+                    chunks.setdefault((e.get("lane"), e.get("session"), e.get("gen")), []).append(
+                        (e["byte_from"], e["byte_to"], e["chunk_sha256"]))
+    return {"chunks": chunks, "blobs": blobs, "gone": gone}
+
+
+def _floor_path(idx: dict, lane: str, key: str, gen: int) -> tuple[Path, bool]:
+    """(lake path, is_blob) for one captured file generation."""
+    if (lane, key, gen) in idx["blobs"]:
+        return lake_blob(lane, key, gen), True
+    return lake_file(lane, key, gen), False
+
+
+def _verify_held(idx: dict, lane: str, key: str, gen: int) -> tuple[bool, str]:
+    """Do the floor's bytes still hash to what the manifest recorded at capture?"""
+    p, is_blob = _floor_path(idx, lane, key, gen)
+    if not p.exists():
+        return False, f"floor file missing: {p.relative_to(brain_home())}"
+    data = p.read_bytes()
+    if is_blob:
+        ok = hashlib.sha256(data).hexdigest() == idx["blobs"][(lane, key, gen)]
+        return ok, "whole-file sha256 " + ("matches" if ok else "DIFFERS")
+    spans = idx["chunks"].get((lane, key, gen), [])
+    if not spans:
+        return False, "no manifest record of this file's capture"
+    bad = sum(1 for a, b, sha in spans if hashlib.sha256(data[a:b]).hexdigest() != sha)
+    return bad == 0, f"{len(spans) - bad}/{len(spans)} captured chunks match their sha256"
+
+
+def _floor_files() -> list[dict]:
+    with read_conn() as c:
+        rows = c.execute(
+            "SELECT f.file_id, f.lane, f.abs_path, f.session_hint, s.witness_gen "
+            "FROM floor.files f JOIN floor.ingest_state s USING (file_id)").fetchall()
+    return [dict(zip(["file_id", "lane", "abs_path", "key", "gen"], r)) for r in rows]
+
+
+def _session_of(lane: str, key: str) -> str:
+    return key.split("/")[1] if lane == "cc_sessiondir" and "/" in key else key
+
+
+def notice_gone() -> int:
+    """WRITER (run by `record`): for each file newly seen gone from its origin, re-hash its
+    floor bytes against every chunk the manifest recorded at capture and append an
+    origin_gone event. The receipt's dates are therefore when the recorder NOTICED —
+    measured, never inferred — and the readers below stay read-only (M10)."""
+    idx = _manifest_index()
+    n = 0
+    for f in _floor_files():
+        ap = f["abs_path"] or ""
+        if ap.startswith("spool://") or Path(ap).exists() or f["file_id"] in idx["gone"]:
+            continue
+        ok, detail = _verify_held(idx, f["lane"], f["key"], f["gen"])
+        manifest.append({"event": "origin_gone", "file_id": f["file_id"], "lane": f["lane"],
+                         "session": f["key"], "gen": f["gen"], "origin_path": ap,
+                         "noticed_at": manifest.now_iso(), "verified": ok, "detail": detail})
+        n += 1
+    return n
+
+
+def receipt() -> dict:
+    """READER: files whose origin is gone (deleted or moved) while the floor still holds
+    them, with the verification `record` performed when it first noticed each one. A file
+    gone since the last `record` shows as pending, never as verified."""
+    idx = _manifest_index()
+    out_files = []
+    for f in _floor_files():
+        ap = f["abs_path"] or ""
+        if ap.startswith("spool://") or Path(ap).exists():
+            continue
+        ev = idx["gone"].get(f["file_id"]) or {}
+        out_files.append({**f, "noticed_at": ev.get("noticed_at"), "verified": ev.get("verified"),
+                          "detail": ev.get("detail") or "noticed now; verified on the next record"})
+    sessions = sorted({(f["lane"], _session_of(f["lane"], f["key"])) for f in out_files
+                       if f["lane"] in _MAIN_LANES})
+    pending = [f for f in out_files if f["verified"] is None]
+    unverified = [f for f in out_files if f["verified"] is False]
+    noticed = sorted(f["noticed_at"] for f in out_files if f["noticed_at"])
+    if not out_files:
+        line = "No captured file is missing from where its agent kept it."
+    else:
+        line = (f"{len(sessions)} session(s) and {len(out_files)} file(s) are gone from where the "
+                f"agent kept them (deleted or moved); the floor holds every one"
+                + ("." if not unverified else
+                   f", but {len(unverified)} could not be verified against the manifest — see files.")
+                + (f" {len(pending)} noticed since the last record, verified on the next." if pending else "")
+                + " brain-mcp restore --list shows what can be put back.")
+    return {"line": line, "sessions_gone": len(sessions), "files_gone": len(out_files),
+            "all_verified": not unverified and not pending, "pending": len(pending),
+            "first_noticed": noticed[0] if noticed else None,
+            "last_noticed": noticed[-1] if noticed else None,
+            "sessions": [{"lane": l, "session": sid} for l, sid in sessions[:50]],
+            "files": [{"lane": f["lane"], "origin_path": f["abs_path"], "verified": f["verified"],
+                       "detail": f["detail"], "noticed_at": f["noticed_at"]}
+                      for f in (unverified + pending)[:20]]}
+
+
+# ── 5c. restore: put a session back where its agent will find it (CLI only) ──
+
+def restore(session: str, to: str | None = None, dry_run: bool = False,
+            accept_redacted: bool = False) -> dict:
+    """Write a session's floor copy back to its origin path (or under `to`), byte-exact.
+
+    All-or-nothing: if any target already exists with DIFFERENT bytes, nothing is written
+    (identical bytes are a no-op). Session-folder files (subagents, tool-results, .meta.json)
+    come back with the transcript. Not an MCP tool: it writes outside the floor, into the
+    agent's own directories, so it is a deliberate CLI act."""
+    idx = _manifest_index()
+    lanes = {l["lane"]: l for l in _lanes()}
+    files = [f for f in _floor_files()
+             if (f["lane"] in _MAIN_LANES and f["key"] == session)
+             or (f["lane"] == "cc_sessiondir" and _session_of(f["lane"], f["key"]) == session)]
+    if not files:
+        return {"ok": False, "error": f"no floor files for session {session}"}
+    plan, conflicts, problems = [], [], []
+    for f in sorted(files, key=lambda x: (x["lane"] != "cc_sessiondir", x["key"])):
+        src, is_blob = _floor_path(idx, f["lane"], f["key"], f["gen"])
+        if not src.exists():
+            problems.append(f"floor copy missing: {src}")
+            continue
+        data = src.read_bytes()
+        if not is_blob and not accept_redacted and any(
+                ln.startswith(b'{"redacted":true') for ln in data.splitlines()):
+            problems.append(f"{src.name} carries redaction tombstones — pass --accept-redacted "
+                            f"to restore it anyway (the agent will see the tombstone lines)")
+            continue
+        origin = f["abs_path"] or ""
+        if to:
+            root = glob_root(lanes.get(f["lane"], {}).get("root_glob", "/"))
+            try:
+                rel = Path(origin).relative_to(root)
+            except ValueError:
+                rel = Path(Path(origin).name)
+            target = Path(to).expanduser() / rel
+        elif origin.startswith("spool://"):
+            problems.append(f"{f['key']}: origin path never observed (hook-only capture) — use --to")
+            continue
+        else:
+            target = Path(origin)
+        sha = hashlib.sha256(data).hexdigest()
+        state = "write"
+        if target.exists():
+            state = "identical" if hashlib.sha256(target.read_bytes()).hexdigest() == sha else "conflict"
+        item = {"lane": f["lane"], "from": str(src.relative_to(brain_home())), "to": str(target),
+                "bytes": len(data), "sha256": sha, "action": state}
+        (conflicts if state == "conflict" else plan).append(item)
+    if problems or conflicts:
+        return {"ok": False, "written": 0, "conflicts": conflicts, "problems": problems,
+                "note": "nothing was written — restore is all-or-nothing and never overwrites "
+                        "different bytes"}
+    written = 0
+    if not dry_run:
+        for item in plan:
+            if item["action"] != "write":
+                continue
+            t = Path(item["to"])
+            t.parent.mkdir(parents=True, exist_ok=True)
+            tmp = t.with_name("." + t.name + ".brain-restore")
+            tmp.write_bytes((brain_home() / item["from"]).read_bytes())
+            os.replace(tmp, t)
+            if hashlib.sha256(t.read_bytes()).hexdigest() != item["sha256"]:
+                return {"ok": False, "written": written, "error": f"post-write sha mismatch at {t}"}
+            manifest.append({"event": "restored", "lane": item["lane"], "session": session,
+                             "from": item["from"], "to": item["to"], "sha256": item["sha256"],
+                             "restored_at": manifest.now_iso()})
+            written += 1
+    main = next((f for f in files if f["lane"] in _MAIN_LANES), None)
+    hint = None
+    if main and main["lane"] == "cc_transcript":
+        with read_conn() as c:
+            cwd = c.execute(
+                "SELECT json_extract_string(raw_line, '$.cwd') FROM floor.raw_lines "
+                "WHERE file_id = ? AND json_valid(raw_line) AND json_extract_string(raw_line, '$.cwd') IS NOT NULL "
+                "ORDER BY line_no LIMIT 1", [main["file_id"]]).fetchone()
+        hint = (f"cd {shlex.quote(cwd[0])} && claude --resume {session}" if cwd and cwd[0]
+                else f"claude --resume {session}  (from the session's original working directory)")
+    elif main and main["lane"] == "codex_rollout":
+        hint = f"codex resume {session}"
+    return {"ok": True, "dry_run": dry_run, "written": written, "files": plan,
+            "resume": hint if not to else None}
+
+
+def restore_list() -> dict:
+    """Sessions whose origin is gone and that the floor can put back."""
+    r = receipt()
+    return {"sessions": r["sessions"], "sessions_gone": r["sessions_gone"],
+            "all_verified": r["all_verified"], "line": r["line"]}
 
 
 # ── 6. capture_status ─────────────────────────────────────────────────────────

@@ -13,8 +13,24 @@ find ~/.claude/projects -name '*.jsonl' -printf '%TY-%Tm-%Td %p\n' | sort | head
 ```
 
 The oldest date you see is where your history ends. brain-mcp records it before it goes —
-byte-exact, content-hashed, locally — and makes it queryable with citations you can verify
-with `sed` and `shasum`.
+the whole session, subagent transcripts and saved tool output included, byte-exact,
+content-hashed, locally — makes it queryable with citations you can verify with `sed` and
+`shasum`, tells you what was deleted, and puts it back.
+
+## If Claude Code deleted it
+
+```bash
+brain-mcp health          # the receipt: "3 session(s) and 41 file(s) are gone from where the
+                          #   agent kept them; the floor holds every one" — each re-hashed
+                          #   against the manifest when the recorder first noticed it
+brain-mcp restore --list  # what can be put back
+brain-mcp restore <id>    # writes the session (and its folder) back, byte-exact, then:
+                          #   cd <its working directory> && claude --resume <id>
+```
+
+`restore` never overwrites different bytes (identical bytes are a no-op), is all-or-nothing,
+and takes `--dry-run` and `--to <dir>`. It is a CLI verb only — no MCP tool writes outside
+the floor.
 
 ## Install
 
@@ -34,7 +50,9 @@ Or as a Claude Code plugin (hooks + server in one step):
 ## What it does
 
 - **Captures at source.** Claude Code via Stop/SessionEnd hooks (line-deltas + a final
-  snapshot); Codex and Pi via a 60-second poll-scan. One spool, one floor.
+  snapshot); Codex, Pi, and everything inside a Claude Code session's own folder (subagent
+  and workflow transcripts, `.meta.json`, `tool-results/`) via a 60-second poll-scan. One
+  spool, one floor.
 - **Keeps the bytes.** The floor is `~/.brain/lake/<lane>/<session>.jsonl` — append-only,
   byte-identical to the original, with an append-only sha256 manifest. Nothing is parsed
   and discarded; the DuckDB index is a cache, fully re-derivable from the lake.
@@ -46,8 +64,11 @@ Or as a Claude Code plugin (hooks + server in one step):
   healthy** — never folded into "looks fine".
 - **Backs up verifiably.** `brain-mcp backup <dest>` syncs lake+manifest and re-hashes
   sampled files at the destination. The verify can fail; that is the point.
-- **Zero network calls at runtime.** No telemetry, no cloud, no accounts. Verify it:
-  there is no httpx/requests import in this package.
+- **One network fetch, ever, and it is not about you.** No telemetry, no cloud, no
+  accounts, and no HTTP client in this package. The exception: DuckDB downloads its
+  full-text-search extension (`fts`) from DuckDB's own extension repository the first time
+  the index is built, and caches it under `~/.duckdb`. `brain-mcp install` does that fetch
+  up front and says so; `brain-mcp doctor` reports whether it is cached.
 
 ## The 7 MCP tools
 
@@ -57,7 +78,7 @@ Or as a Claude Code plugin (hooks + server in one step):
 | `brain_get` | the raw lines behind a citation, with sha verification |
 | `brain_recent` | time-ordered recent activity, every row cited |
 | `brain_sessions` | session cards per day/agent |
-| `brain_health` | per-lane origin-vs-floor freshness; unknown ≠ healthy |
+| `brain_health` | per-lane origin-vs-floor freshness (unknown ≠ healthy), plus the receipt of what the agents deleted |
 | `brain_capture_status` | is the machinery itself moving (spool, heartbeats, floor) |
 | `brain_backup` | verified backup; writes only outside the floor |
 
@@ -77,9 +98,13 @@ it does NOT mean "it never happened". Never fill an abstention with your own gue
 - `verified: false` from brain_get means the floor changed since indexing. Say so plainly.
 - A health response containing any `unknown` lane is never "everything looks fine".
   The honest sentence is: "2 lanes fresh, 1 stale, 1 unmeasured."
-- "What do I think about X" → `brain_search(query, role="user")`. "How did my thinking
-  evolve" → add `order="time_asc"` and read the citations in time order. The server has
-  no opinion about your human's mind; it has their words, with receipts.
+- "What do I think about X" → `brain_search(query, role="user")`. That returns what the
+  PERSON wrote: text the harness injected under the user role (skill bodies, reminders,
+  slash-command wrappers, compaction summaries, Codex context blocks — a quarter to two
+  thirds of "user" rows, measured) is excluded unless you pass `include_machine=True`, and
+  subagent transcripts unless `include_subagents=True`. "How did my thinking evolve" → add
+  `order="time_asc"`; bound it with `since` / `until`. The server has no opinion about your
+  human's mind; it has their words, with receipts.
 
 ## The floor format
 
@@ -88,6 +113,8 @@ it does NOT mean "it never happened". Never fill an abstention with your own gue
   spool/<lane>/                 hooks + scanner write here (atomic, dot-tmp invisible)
   lake/<lane>/<session>.jsonl   THE FLOOR: append-only, byte-identical to the origin;
                                 a rewrite opens <session>.g2.jsonl — old kept, never deleted
+  lake/cc_sessiondir/<project>/<session>/...   a CC session's folder, mirrored at the
+                                same relative paths (subagents/, tool-results/, *.meta.json)
   manifest/manifest.jsonl       one versioned line per chunk: byte range, line range, sha256
   offsets/<lane>/<session>      hook fast-path line counters
   health/*.last_run             side-effect heartbeats (mtimes are the proof, never a report)
@@ -103,7 +130,8 @@ Where your agents keep their transcripts: Claude Code `~/.claude/projects/**/*.j
 ```bash
 brain-mcp record                  # one capture tick (the scheduler runs this every 60s)
 brain-mcp health [--exit-nonzero-on-stale]   # cron-able
-brain-mcp doctor                  # capture status + health summary
+brain-mcp doctor                  # capture status, health, fts cache, the receipt
+brain-mcp restore [<id>] [--list] [--to DIR] [--dry-run]   # put a deleted session back
 brain-mcp redact <file> --lines A B --reason "..."   # tombstone a secret; audited in manifest
 brain-mcp migrate-v1 <all_conversations.parquet>     # import v1 data (marked v1_derived)
 brain-mcp uninstall               # removes hooks + scheduler; your floor is KEPT

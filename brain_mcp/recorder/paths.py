@@ -45,9 +45,29 @@ def db_path() -> Path:
 
 
 def lake_file(lane: str, session: str, gen: int = 1) -> Path:
-    """Generation 1 is bare <session>.jsonl; later generations are <session>.gN.jsonl."""
+    """Generation 1 is bare <session>.jsonl; later generations are <session>.gN.jsonl.
+
+    `session` may be a relative key with slashes (the cc_sessiondir lane keys a file by
+    its path under ~/.claude/projects), so the lake mirrors the origin's layout."""
     name = f"{session}.jsonl" if gen == 1 else f"{session}.g{gen}.jsonl"
     return lake_dir(lane) / name
+
+
+def lake_blob(lane: str, key: str, gen: int = 1) -> Path:
+    """A whole-file capture (not line-oriented): the key keeps its own extension, and a
+    later generation is inserted before it — tool-results/x.txt -> tool-results/x.g2.txt."""
+    p = Path(key)
+    name = p.name if gen == 1 else f"{p.stem}.g{gen}{p.suffix}"
+    return lake_dir(lane) / p.parent / name
+
+
+def glob_root(root_glob: str) -> Path:
+    """The directory every match of a lane glob is relative to: the last whole directory
+    before the first wildcard (`projects/*/…` and `projects/-Users-x*/…` both -> projects)."""
+    head = root_glob.split("*")[0]
+    if not head.endswith("/"):
+        head = head.rsplit("/", 1)[0] + "/"
+    return Path(head.rstrip("/") or "/").expanduser()
 
 
 def ensure_layout(lanes: list[str] | None = None) -> Path:

@@ -1,5 +1,5 @@
 """brain-mcp v2 CLI — record · install · uninstall · health · backup · redact ·
-migrate-v1 · doctor · serve.
+migrate-v1 · restore · doctor · serve.
 
 Every verb prints what it measured. Windows is out of scope for v2.0 (stated,
 not implied). macOS scheduling = LaunchAgent; Linux = systemd user timer.
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .paths import brain_home, ensure_layout
 
-LANES = ["cc_transcript", "codex_rollout", "pi_session"]
+LANES = ["cc_transcript", "codex_rollout", "pi_session", "cc_sessiondir"]
 PLIST_LABEL = "com.brainmcp.record"
 
 
@@ -38,8 +38,39 @@ def cmd_record(args) -> int:
     d = drain_tick()
     s = scan_tick(only_lane=args.lane)
     r = derived.refresh(rebuild_fts=args.fts if args.fts is not None else None)
-    print(json.dumps({"drain": d, "scan": s, "derived": r}, indent=2, default=str))
+    from . import api
+    gone = api.notice_gone()  # the writer half of the receipt: verify + log what vanished
+    print(json.dumps({"drain": d, "scan": s, "derived": r, "noticed_gone": gone},
+                     indent=2, default=str))
     return 0
+
+
+def _fts_state() -> str:
+    """Is DuckDB's full-text-search extension already cached on this machine?"""
+    import duckdb
+    try:
+        row = duckdb.connect().execute(
+            "SELECT installed FROM duckdb_extensions() WHERE extension_name = 'fts'").fetchone()
+        return "cached" if row and row[0] else "not yet downloaded"
+    except Exception as e:  # pragma: no cover — reported, never fatal
+        return f"unknown ({type(e).__name__})"
+
+
+def _prefetch_fts() -> None:
+    """The recorder's ONE network fetch, done here, in the open, at install time: DuckDB
+    downloads its fts extension from its own extension repository and caches it under
+    ~/.duckdb. Nothing about the user or their transcripts is sent."""
+    import duckdb
+    if _fts_state() == "cached":
+        print("search index extension (DuckDB fts): already cached — no download needed")
+        return
+    print("downloading DuckDB's full-text-search extension (fts) from DuckDB's extension "
+          "repository — the recorder's only network fetch; nothing about you is sent ...")
+    try:
+        duckdb.connect().execute("INSTALL fts")
+        print("  fts cached under ~/.duckdb")
+    except Exception as e:
+        print(f"  could not download now ({type(e).__name__}); the first record will retry")
 
 
 # ── install / uninstall ───────────────────────────────────────────────────────
@@ -101,6 +132,8 @@ def cmd_install(args) -> int:
     else:
         print(f"unknown agent {agent!r}; known: cc, codex, pi", file=sys.stderr)
         return 2
+
+    _prefetch_fts()
 
     # the scheduler runs scan+drain for ALL lanes
     if platform.system() == "Darwin":
@@ -177,6 +210,7 @@ def cmd_health(args) -> int:
 
     h = api.health()
     print(json.dumps(h, indent=2, default=str))
+    print(h["receipt"]["line"], file=sys.stderr)
     if args.exit_nonzero_on_stale and (h["summary"].get("stale") or h["summary"].get("unknown")):
         return 1
     return 0
@@ -227,10 +261,11 @@ def cmd_migrate_v1(args) -> int:
         derived.ensure_shape(c)
         n = c.execute(
             "INSERT INTO derived.messages (msg_id, agent, session_id, role, model, text, "
-            "event_time, captured_at, file_id, witness_gen, line_no) "
+            "event_time, captured_at, file_id, witness_gen, line_no, human_authored, "
+            "is_subagent) "
             "SELECT 'v1:'||source||':'||message_id, source, conversation_id, role, model, "
             "content, CASE WHEN timestamp_is_fallback = 0 THEN msg_timestamp END, "
-            "NULL, NULL, 0, 0 "
+            "NULL, NULL, 0, 0, role = 'user', false "
             "FROM read_parquet(?) v "
             "ANTI JOIN derived.messages m ON m.msg_id = 'v1:'||v.source||':'||v.message_id "
             "WHERE v.content IS NOT NULL AND length(v.content) > 0",
@@ -265,7 +300,28 @@ def cmd_doctor(args) -> int:
     rep = sec.scan()
     n = rep["distinct_findings"]
     print(f"secrets in floor: {n} distinct" + (f" {rep['by_shape']} — run 'brain-mcp scan-secrets'" if n else " ✓"))
+    print(f"search index extension (DuckDB fts): {_fts_state()}")
+    print(f"receipt: {api.receipt()['line']}")
     return 0
+
+
+def cmd_restore(args) -> int:
+    """Put a session back where its agent will find it, byte-exact, from the floor."""
+    _init()
+    from . import api
+
+    if args.list or not args.session:
+        r = api.restore_list()
+        print(r["line"])
+        for s_ in r["sessions"]:
+            print(f"  {s_['lane']:<15} {s_['session']}")
+        return 0
+    r = api.restore(args.session, to=args.to, dry_run=args.dry_run,
+                    accept_redacted=args.accept_redacted)
+    print(json.dumps(r, indent=2, default=str))
+    if r.get("ok") and r.get("resume") and not args.dry_run:
+        print(f"\nrestored. resume it with:\n  {r['resume']}", file=sys.stderr)
+    return 0 if r.get("ok") else 3
 
 
 def cmd_serve(args) -> int:  # pragma: no cover
@@ -317,6 +373,15 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("doctor", help="capture status + health summary")
     p.set_defaults(fn=cmd_doctor)
+
+    p = sub.add_parser("restore", help="put a session the agent deleted back, byte-exact, from the floor")
+    p.add_argument("session", nargs="?", help="session id (omit, or --list, to list what can be restored)")
+    p.add_argument("--list", action="store_true", help="sessions whose origin is gone")
+    p.add_argument("--to", default=None, help="restore under this directory instead of the origin path")
+    p.add_argument("--dry-run", action="store_true", help="show what would be written; write nothing")
+    p.add_argument("--accept-redacted", action="store_true",
+                   help="restore even if the floor copy carries redaction tombstones")
+    p.set_defaults(fn=cmd_restore)
 
     p = sub.add_parser("serve", help="run the MCP server (stdio)")
     p.set_defaults(fn=cmd_serve)

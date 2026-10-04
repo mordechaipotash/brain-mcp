@@ -30,13 +30,20 @@ mcp = MCPServer(
 @mcp.tool(title="Search recorded history (cited or abstained)",
           annotations={"readOnlyHint": True})
 def brain_search(query: str, agent: Optional[str] = None, role: Optional[str] = None,
-                 limit: int = 10, min_rank: float = 0.0, order: str = "rank") -> dict[str, Any]:
+                 limit: int = 10, min_rank: float = 0.0, order: str = "rank",
+                 since: Optional[str] = None, until: Optional[str] = None,
+                 include_machine: bool = False,
+                 include_subagents: bool = False) -> dict[str, Any]:
     """Keyword (BM25) search over all recorded conversations. Every hit carries a
     mechanically verifiable citation; zero hits return an explicit abstention with
-    coverage. role='user' answers 'what did I say'; order='time_asc' reads a
-    thinking trajectory."""
-    return api.search(query, agent=agent, role=role, limit=limit,
-                      min_rank=min_rank, order=order)
+    coverage. role='user' returns what the PERSON wrote: text the harness injected
+    under the user role (skill bodies, reminders, slash-command wrappers, compaction
+    summaries, Codex context blocks) is excluded unless include_machine=True, and
+    subagent transcripts are excluded unless include_subagents=True. since / until
+    take an ISO date or timestamp. order='time_asc' reads a thinking trajectory."""
+    return api.search(query, agent=agent, role=role, limit=limit, min_rank=min_rank,
+                      order=order, since=since, until=until,
+                      include_machine=include_machine, include_subagents=include_subagents)
 
 
 @mcp.tool(title="Fetch + verify the raw lines behind a citation",
@@ -51,10 +58,14 @@ def brain_get(file: str, lines: list[int], expect_sha256: Optional[str] = None,
 @mcp.tool(title="Recent activity across all recorded agents",
           annotations={"readOnlyHint": True})
 def brain_recent(hours: int = 24, agent: Optional[str] = None,
-                 role: Optional[str] = None, limit: int = 20) -> dict[str, Any]:
+                 role: Optional[str] = None, limit: int = 20,
+                 include_machine: bool = False,
+                 include_subagents: bool = False) -> dict[str, Any]:
     """Time-ordered recent messages, every row cited. An empty result states its
-    coverage — silence never renders as an answer."""
-    return api.recent(hours=hours, agent=agent, role=role, limit=limit)
+    coverage — silence never renders as an answer. Injected text and subagent
+    transcripts are excluded unless asked for, as in brain_search."""
+    return api.recent(hours=hours, agent=agent, role=role, limit=limit,
+                      include_machine=include_machine, include_subagents=include_subagents)
 
 
 @mcp.tool(title="Browse recorded sessions", annotations={"readOnlyHint": True})
@@ -70,7 +81,10 @@ def brain_sessions(date: Optional[str] = None, agent: Optional[str] = None,
 def brain_health() -> dict[str, Any]:
     """Origin-vs-floor staleness per lane. fresh = floor holds everything the
     agent's own files show; stale = the agent has content the recorder missed;
-    unknown = unmeasured, NOT healthy (mandatory reason attached)."""
+    unknown = unmeasured, NOT healthy (mandatory reason attached). The receipt
+    lists files the agent has since deleted (or moved) that the floor still holds,
+    each verified against the manifest when first noticed; `brain-mcp restore`
+    (CLI) puts a session back."""
     return api.health()
 
 

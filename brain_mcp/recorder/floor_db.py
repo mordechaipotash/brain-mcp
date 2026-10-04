@@ -86,6 +86,11 @@ DEFAULT_LANES = [
     ("cc_transcript", "cc", "hook", "~/.claude/projects/**/*.jsonl"),
     ("codex_rollout", "codex", "watch", "~/.codex/sessions/**/*.jsonl"),
     ("pi_session", "pi", "watch", "~/.pi/agent/sessions/**/*.jsonl"),
+    # 2.1: everything inside a CC session's own folder — subagent + workflow transcripts
+    # (72% of CC's files, measured 2026-10-04), their .meta.json, and tool-results/ —
+    # mirrored into the lake at the same relative path. Scanner-only, like Codex: the
+    # 60s scan is well inside the 30-day cleanup, and the spool contract is per-session.
+    ("cc_sessiondir", "cc", "watch", "~/.claude/projects/*/*/**/*"),
 ]
 
 

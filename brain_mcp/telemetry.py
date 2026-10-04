@@ -2,7 +2,8 @@
 
 Telemetry was removed entirely (and the endpoint it posted to was retired).
 This module remains as a no-op shim so existing imports keep working.
-brain-mcp makes zero network calls at runtime.
+brain-mcp ships no HTTP client. Its one network fetch is DuckDB downloading its
+full-text-search extension (fts) on first use — done up front by `brain-mcp install`.
 """
 
 from __future__ import annotations

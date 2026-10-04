@@ -1,0 +1,7 @@
+{"timestamp": "2026-09-01T10:00:00Z", "type": "session_meta", "payload": {"id": "22222222-3333-4444-5555-666666666666", "cwd": "/Users/test/proj"}}
+{"timestamp": "2026-09-01T10:00:01Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<environment_context>\n<cwd>/Users/test</cwd> okapi\n</environment_context>"}]}}
+{"timestamp": "2026-09-01T10:00:02Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<recommended_plugins>okapi plugins</recommended_plugins>"}]}}
+{"timestamp": "2026-09-01T10:00:03Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "# AGENTS.md instructions for /Users/test okapi"}]}}
+{"timestamp": "2026-09-01T10:00:04Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<realtime_delegation>\n<input>find every okapi sighting from last week</input>\n<transcript_delta>user: okapi chatter assistant: sure</transcript_delta>\n</realtime_delegation>"}]}}
+{"timestamp": "2026-09-01T10:00:05Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "how many okapi live in the reserve"}]}}
+{"timestamp": "2026-09-01T10:00:06Z", "type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "About forty okapi live there."}]}}
