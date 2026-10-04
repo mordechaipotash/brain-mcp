@@ -224,8 +224,10 @@ def cmd_migrate_v1(args) -> int:
 
     with write_conn() as c:
         c.execute(derived.DIALECT_SQL)
+        derived.ensure_shape(c)
         n = c.execute(
-            "INSERT INTO derived.messages "
+            "INSERT INTO derived.messages (msg_id, agent, session_id, role, model, text, "
+            "event_time, captured_at, file_id, witness_gen, line_no) "
             "SELECT 'v1:'||source||':'||message_id, source, conversation_id, role, model, "
             "content, CASE WHEN timestamp_is_fallback = 0 THEN msg_timestamp END, "
             "NULL, NULL, 0, 0 "
