@@ -213,7 +213,7 @@ def sessions(date: str | None = None, agent: str | None = None, limit: int = 50)
 
 def health() -> dict:
     lanes_out = []
-    counts = {"fresh": 0, "stale": 0, "unknown": 0, "disabled": 0}
+    counts = {"fresh": 0, "stale": 0, "unknown": 0, "disabled": 0, "degraded": 0}
     grace = 300  # 5 min: 2 drain cadences + slack
     for l in _lanes():
         entry = {"lane": l["lane"], "mode": l["mode"]}
@@ -256,10 +256,52 @@ def health() -> dict:
                 entry["verdict"] = "fresh"; counts["fresh"] += 1
             else:
                 entry["verdict"] = "stale"; counts["stale"] += 1
+        with read_conn() as c:
+            capped = c.execute(
+                "SELECT count(DISTINCT w.file_id) FROM floor.witnesses w JOIN floor.files f USING (file_id) "
+                "WHERE f.lane = ? AND w.growth = 'rewrite-capped' AND w.observed_at > now() - INTERVAL 24 HOUR",
+                [l["lane"]]).fetchone()[0]
+        if capped and entry.get("verdict") in ("fresh", "stale"):
+            counts[entry["verdict"]] -= 1
+            counts["degraded"] += 1
+            entry["verdict"] = "degraded"
+            entry["reason"] = (f"rewrite-capped: {capped} file(s) kept rewriting and were capped at "
+                               f"{_rewrite_cap()} new generations a day — usually one session id at two "
+                               f"paths, or a file rewritten in place. See `brain-mcp doctor`.")
         lanes_out.append(entry)
     env = _envelope("origin-vs-floor per lane; 'unknown' means unmeasured, not healthy, "
                     "and no summary relabels it", _unwatched())
     return {**env, "lanes": lanes_out, "summary": counts, "receipt": receipt()}
+
+
+def _rewrite_cap() -> int:
+    from .visit import REWRITE_CAP
+    return REWRITE_CAP
+
+
+def runaway_report(min_generations: int = 10) -> dict:
+    """Files that opened many generations — the 2.1.0 runaway's fingerprint. Read-only:
+    counts and sizes from stat; nothing is hashed, moved or deleted."""
+    idx = _manifest_index()
+    out = []
+    for f in _floor_files():
+        if (f["gen"] or 0) < min_generations:
+            continue
+        sizes = []
+        for g in range(1, f["gen"] + 1):
+            p, _ = _floor_path(idx, f["lane"], f["key"], g)
+            if p.exists():
+                sizes.append(p.stat().st_size)
+        same = len(sizes) - len(set(sizes))
+        out.append({"lane": f["lane"], "key": f["key"], "origin_path": f["abs_path"],
+                    "generations": f["gen"], "files_on_disk": len(sizes), "bytes": sum(sizes),
+                    "same_size_copies": same})
+    out.sort(key=lambda r: -r["bytes"])
+    return {"files": out, "bytes": sum(r["bytes"] for r in out),
+            "note": ("generation files are kept by design (a rewrite never deletes the old); a file "
+                     "with many is the signature of one session id at two paths before 2.1.1. "
+                     "same_size_copies counts generations whose size repeats another — likely, not "
+                     "verified, byte-identical. Nothing here is removed automatically.")}
 
 
 # ── 5b. the receipt: what the agents deleted, and whether the floor still holds it ──
@@ -323,7 +365,11 @@ def _floor_files() -> list[dict]:
 
 
 def _session_of(lane: str, key: str) -> str:
-    return key.split("/")[1] if lane == "cc_sessiondir" and "/" in key else key
+    """The session a floor key belongs to: <project>/<uuid>/... for a session-folder file,
+    <uuid>~<project> for a second copy of a session, the bare uuid otherwise."""
+    if lane == "cc_sessiondir" and "/" in key:
+        return key.split("/")[1]
+    return key.split("~", 1)[0]
 
 
 def notice_gone() -> int:
@@ -395,8 +441,8 @@ def restore(session: str, to: str | None = None, dry_run: bool = False,
     idx = _manifest_index()
     lanes = {l["lane"]: l for l in _lanes()}
     files = [f for f in _floor_files()
-             if (f["lane"] in _MAIN_LANES and f["key"] == session)
-             or (f["lane"] == "cc_sessiondir" and _session_of(f["lane"], f["key"]) == session)]
+             if (f["lane"] in _MAIN_LANES or f["lane"] == "cc_sessiondir")
+             and _session_of(f["lane"], f["key"]) == session]
     if not files:
         return {"ok": False, "error": f"no floor files for session {session}"}
     plan, conflicts, problems = [], [], []
@@ -451,7 +497,8 @@ def restore(session: str, to: str | None = None, dry_run: bool = False,
                              "from": item["from"], "to": item["to"], "sha256": item["sha256"],
                              "restored_at": manifest.now_iso()})
             written += 1
-    main = next((f for f in files if f["lane"] in _MAIN_LANES), None)
+    main = next((f for f in files if f["lane"] in _MAIN_LANES and "~" not in f["key"]), None) \
+        or next((f for f in files if f["lane"] in _MAIN_LANES), None)
     hint = None
     if main and main["lane"] == "cc_transcript":
         with read_conn() as c:

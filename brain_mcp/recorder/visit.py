@@ -30,11 +30,18 @@ def _sha256(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
+# A file that keeps opening new generations is capped: past this many rewrites in 24 hours
+# a visit writes nothing and reports `rewrite-capped`. The 2.1.0 runaway ran at ~560 a day.
+REWRITE_CAP = 5
+
+
 def file_identity(lane: str, agent: str, session: str) -> str:
-    """Identity is (machine, lane, session) — the session uuid is the invariant
-    (gravity's 'thing' lesson). Hook and scanner MUST converge on one identity
-    even though the hook doesn't know the origin path; abs_path is informational
-    and upgraded when the scanner sees the real file."""
+    """Identity is (machine, lane, key). The key is the session uuid for the first path a
+    session is seen at, and `<uuid>~<project>` for any other path carrying the same uuid
+    (a renamed project folder leaves one under each name — 2.1.1). Hook and scanner converge
+    on it: the hook names the transcript's project in its spool files, the scanner groups
+    paths by uuid each tick. Keying by the uuid alone made two copies flip-flop into a full
+    new generation every tick (73 GB in four days on the author's Mac, 2026-08-24)."""
     return _sha256(f"{machine_id()}:{lane}:{session}".encode())[:32]
 
 
@@ -181,11 +188,34 @@ def ingest_chunk(
             "last_line_no=excluded.last_line_no, prefix_sha256=excluded.prefix_sha256, updated_at=now()",
             [fid, gen, new_size, new_size, base_line_no + len(lines), prefix_sha],
         )
+        # A new generation is a rewrite, not a first sight: through 2.1.0 both were recorded as
+        # 'first', so nothing could count rewrites — the cap below needs them told apart.
+        growth = "append" if base_offset else ("rewrite" if gen > 1 else "first")
         c.execute(
             "INSERT INTO floor.witnesses VALUES (?, now(), ?, NULL, ?, NULL, ?)",
-            [fid, new_size, "first" if base_offset == 0 else "append", len(lines)],
+            [fid, new_size, growth, len(lines)],
         )
     return len(lines)
+
+
+def _capped(lane: str, fid: str, key: str, origin: str) -> bool:
+    """True once a file has opened REWRITE_CAP new generations in the last 24 hours. The
+    first capped visit in a window leaves one witness row and one manifest event; later
+    capped visits leave nothing, so a flapping file cannot grow the floor in any form."""
+    with write_conn() as c:
+        n, capped = c.execute(
+            "SELECT count(*) FILTER (WHERE growth = 'rewrite'), "
+            "count(*) FILTER (WHERE growth = 'rewrite-capped') FROM floor.witnesses "
+            "WHERE file_id = ? AND observed_at > now() - INTERVAL 24 HOUR", [fid]).fetchone()
+        if n < REWRITE_CAP:
+            return False
+        if not capped:
+            c.execute("INSERT INTO floor.witnesses VALUES (?, now(), 0, NULL, 'rewrite-capped', NULL, 0)",
+                      [fid])
+            manifest.append({"event": "rewrite_capped", "file_id": fid, "lane": lane, "session": key,
+                             "origin_path": origin, "cap_per_24h": REWRITE_CAP,
+                             "at": datetime.now(timezone.utc).isoformat()})
+    return True
 
 
 def _sha256_lake_prefix(lf: Path, upto: int) -> str:
@@ -238,6 +268,8 @@ def visit_origin(lane: str, agent: str, origin: Path, session: str) -> str:
 
     if st.st_size < last_off or not prefix_ok:
         # rewrite/truncation (the proven silent-stop defect, fixed): new generation, keep the old
+        if _capped(lane, state["file_id"], session, str(origin)):
+            return "rewrite-capped"
         new_gen = gen + 1
         with open(origin, "rb") as f:
             chunk = f.read()
@@ -274,6 +306,8 @@ def visit_blob(lane: str, agent: str, origin: Path, key: str) -> str:
     sha = _sha256(data)
     if state is not None and sha == state["prefix_sha256"]:
         return "unchanged"
+    if state is not None and _capped(lane, state["file_id"], key, str(origin)):
+        return "rewrite-capped"
     gen = 1 if state is None else state["witness_gen"] + 1
     lf = lake_blob(lane, key, gen)
     lf.parent.mkdir(parents=True, exist_ok=True)

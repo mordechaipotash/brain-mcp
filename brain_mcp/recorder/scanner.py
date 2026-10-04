@@ -14,7 +14,7 @@ import json
 import re
 from pathlib import Path
 
-from .floor_db import read_conn
+from .floor_db import read_conn, write_conn
 from .paths import glob_root
 from .visit import visit_blob, visit_origin
 
@@ -82,24 +82,49 @@ def scan_tick(only_lane: str | None = None) -> dict:
         # "size == last_size -> unchanged", so answer that here. Measured 2026-10-04: 5.3 ms
         # per unchanged file, ~16 s a tick for one machine's 3,046 session-folder files.
         with read_conn() as c:
-            last_size = dict(c.execute(
-                "SELECT f.session_hint, s.last_size FROM floor.ingest_state s "
-                "JOIN floor.files f USING (file_id) WHERE f.lane = ?", [lane]).fetchall())
+            known = c.execute(
+                "SELECT f.session_hint, s.last_size, f.abs_path FROM floor.ingest_state s "
+                "JOIN floor.files f USING (file_id) WHERE f.lane = ?", [lane]).fetchall()
+        last_size = {k: size for k, size, _ in known}
+        recorded = {k: path for k, _, path in known}
         counts: dict[str, int] = {}
         skipped_no_session = 0
+        items, by_session, moves = [], {}, []
         for f in glob.glob(str(Path(lane_row["root_glob"]).expanduser()), recursive=True):
             p = Path(f)
             if not p.is_file() or p.name.startswith("."):
                 continue
-            mode = "lines"
             if lane == "cc_sessiondir":
-                keyed = sessiondir_key(p, root)
-                session, mode = keyed if keyed else (None, "lines")
-            else:
-                session = session_from_filename(lane, p)
+                keyed = sessiondir_key(p, root)   # already a path: two folders, two keys
+                if keyed is None:
+                    skipped_no_session += 1
+                else:
+                    items.append((p, keyed[0], keyed[1]))
+                continue
+            session = session_from_filename(lane, p)
             if session is None:
                 skipped_no_session += 1
-                continue
+            else:
+                by_session.setdefault(session, []).append(p)
+        # One session uuid at several paths (a renamed project folder leaves one under each
+        # name, each with lines the other lacks) is several files: the recorded path — or, on
+        # first sight, the alphabetically first — keeps the bare key, every other path gets
+        # <uuid>~<project>. Keyed by the uuid alone they flip-flopped into a full new
+        # generation every tick (2.1.0 and earlier). A uuid at ONE new path whose recorded
+        # path is gone is a move: same identity, path updated.
+        for session, paths in by_session.items():
+            paths = sorted(paths, key=str)
+            rec = recorded.get(session)
+            canon = next((q for q in paths if str(q) == rec), paths[0])
+            if rec and str(canon) != rec and not rec.startswith("spool://") and not Path(rec).exists():
+                moves.append((str(canon), session))
+            for q in paths:
+                items.append((q, session if q == canon else f"{session}~{q.parent.name}", "lines"))
+        if moves:
+            with write_conn() as c:
+                c.executemany("UPDATE floor.files SET abs_path = ? WHERE lane = ? AND session_hint = ?",
+                              [(path, lane, key) for path, key in moves])
+        for p, session, mode in items:
             if last_size.get(session) == p.stat().st_size:
                 counts["unchanged"] = counts.get("unchanged", 0) + 1
                 continue

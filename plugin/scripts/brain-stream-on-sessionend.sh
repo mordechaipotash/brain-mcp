@@ -15,7 +15,11 @@ input="$(cat)" || exit 0
 tp="$(printf '%s' "$input" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("transcript_path",""))' 2>/dev/null)" || exit 0
 sid="$(printf '%s' "$input" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null)" || exit 0
 [ -n "$tp" ] && [ -n "$sid" ] && [ -f "$tp" ] || exit 0
+# 2.1.1: name the transcript's project folder too — one session uuid can live in two
+# project folders after a rename, and the drain must know which copy a delta extends.
+proj="$(basename "$(dirname "$tp")")"
+key="$sid@$proj"
 
-tmp="$SPOOL/.$sid.final.$$"
-cp "$tp" "$tmp" 2>/dev/null && mv -f "$tmp" "$SPOOL/$sid.jsonl" || rm -f "$tmp" 2>/dev/null
+tmp="$SPOOL/.$key.final.$$"
+cp "$tp" "$tmp" 2>/dev/null && mv -f "$tmp" "$SPOOL/$key.jsonl" || rm -f "$tmp" 2>/dev/null
 exit 0

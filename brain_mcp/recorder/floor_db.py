@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS floor.lanes (
 
 -- one row per ORIGIN file ever seen (identity carries machine_id: cross-check M4)
 CREATE TABLE IF NOT EXISTS floor.files (
-  file_id      TEXT PRIMARY KEY,   -- sha256(machine_id:agent:realpath)[:32]
+  file_id      TEXT PRIMARY KEY,   -- sha256(machine_id:lane:key)[:32]; key = session uuid, or
+                                   -- <uuid>~<project> for a second copy (2.1.1), or a cc_sessiondir path
   machine_id   TEXT NOT NULL,
   agent        TEXT NOT NULL,
   lane         TEXT NOT NULL,

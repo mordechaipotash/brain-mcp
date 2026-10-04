@@ -130,7 +130,7 @@ Where your agents keep their transcripts: Claude Code `~/.claude/projects/**/*.j
 ```bash
 brain-mcp record                  # one capture tick (the scheduler runs this every 60s)
 brain-mcp health [--exit-nonzero-on-stale]   # cron-able
-brain-mcp doctor                  # capture status, health, fts cache, the receipt
+brain-mcp doctor                  # capture status, health, fts cache, the receipt, runaway generations
 brain-mcp restore [<id>] [--list] [--to DIR] [--dry-run]   # put a deleted session back
 brain-mcp redact <file> --lines A B --reason "..."   # tombstone a secret; audited in manifest
 brain-mcp migrate-v1 <all_conversations.parquet>     # import v1 data (marked v1_derived)

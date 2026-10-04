@@ -26,23 +26,27 @@ input="$(cat)" || exit 0
 tp="$(printf '%s' "$input" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("transcript_path",""))' 2>/dev/null)" || exit 0
 sid="$(printf '%s' "$input" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null)" || exit 0
 [ -n "$tp" ] && [ -n "$sid" ] && [ -f "$tp" ] || exit 0
+# 2.1.1: name the transcript's project folder too — one session uuid can live in two
+# project folders after a rename, and the drain must know which copy a delta extends.
+proj="$(basename "$(dirname "$tp")")"
+key="$sid@$proj"
 
 total="$(wc -l < "$tp" | tr -d ' ')" || exit 0
 last=0
-[ -f "$OFFS/$sid" ] && last="$(head -1 "$OFFS/$sid" | tr -dc '0-9')" && last="${last:-0}"
+[ -f "$OFFS/$key" ] && last="$(head -1 "$OFFS/$key" | tr -dc '0-9')" && last="${last:-0}"
 
 if [ "$total" -lt "$last" ]; then
     # rewrite/truncation (defect-2 fix): reset and ship the whole file as a snapshot
-    tmp="$SPOOL/.$sid.rewrite.$$"
-    cp "$tp" "$tmp" 2>/dev/null && mv -f "$tmp" "$SPOOL/$sid.jsonl" && echo "$total" > "$OFFS/$sid"
+    tmp="$SPOOL/.$key.rewrite.$$"
+    cp "$tp" "$tmp" 2>/dev/null && mv -f "$tmp" "$SPOOL/$key.jsonl" && echo "$total" > "$OFFS/$key"
     exit 0
 fi
 [ "$total" -gt "$last" ] || exit 0
 
-tmp="$SPOOL/.$sid.turn.$$"
+tmp="$SPOOL/.$key.turn.$$"
 if tail -n "+$((last + 1))" "$tp" | head -n "$((total - last))" > "$tmp" 2>/dev/null; then
     # spool-rename FIRST, offset-advance SECOND (crash between = duplicate, absorbed)
-    mv -f "$tmp" "$SPOOL/$sid.turn-$last-$total.jsonl" && echo "$total" > "$OFFS/$sid"
+    mv -f "$tmp" "$SPOOL/$key.turn-$last-$total.jsonl" && echo "$total" > "$OFFS/$key"
 else
     rm -f "$tmp" 2>/dev/null
 fi

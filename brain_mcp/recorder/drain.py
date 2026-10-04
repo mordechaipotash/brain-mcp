@@ -5,8 +5,12 @@ removed ONLY after its content is durably in the lake + floor. Failure = the
 file stays and is retried next tick. Outage = delay, never loss.
 
 Filename contract (the proven one, full session id — never truncated):
-    <session>.turn-<from_exclusive>-<through_inclusive>.jsonl    line-delta
-    <session>.jsonl                                              final whole snapshot
+    <session>[@<project>].turn-<from_exclusive>-<through_inclusive>.jsonl    line-delta
+    <session>[@<project>].jsonl                                              final whole snapshot
+@<project> (2.1.1) is the transcript's project folder. One uuid can live in two project
+folders after a rename; the project says which copy a delta belongs to, and the origin
+path is recorded for real instead of as a spool:// placeholder. Names without it (older
+hooks) drain to the uuid's first copy, exactly as before.
 Dot-prefixed files are invisible (atomic tmp+rename writers).
 
 Reconciliation with the scanner (shared floor.ingest_state, keyed by session):
@@ -24,16 +28,33 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .paths import spool_dir
+from .floor_db import read_conn
+from .paths import glob_root, spool_dir
 from .visit import get_state, ingest_chunk, split_complete_lines
 
 _UUID = r"[0-9a-fA-F-]{36}"
-TURN_DELTA_RE = re.compile(rf"^(?P<session>{_UUID})\.turn-(?P<frm>\d+)-(?P<through>\d+)\.jsonl$")
-SNAPSHOT_RE = re.compile(rf"^(?P<session>{_UUID})\.jsonl$")
+TURN_DELTA_RE = re.compile(
+    rf"^(?P<session>{_UUID})(?:@(?P<proj>[^/]+?))?\.turn-(?P<frm>\d+)-(?P<through>\d+)\.jsonl$")
+SNAPSHOT_RE = re.compile(rf"^(?P<session>{_UUID})(?:@(?P<proj>[^/]+?))?\.jsonl$")
 
 # lane -> the origin path a hook-captured session maps back to (for files.abs_path);
 # the hook doesn't pass it, so the drain records the spool provenance instead.
 _LANE_AGENT = {"cc_transcript": "cc"}
+
+
+def _route(lane: str, session: str, proj: str | None) -> tuple[str, str]:
+    """(floor key, origin path) for a spooled delta — the scanner's rule, from the hook side."""
+    if not proj:
+        return session, f"spool://{lane}/{session}"
+    with read_conn() as c:
+        row = c.execute("SELECT root_glob FROM floor.lanes WHERE lane = ?", [lane]).fetchone()
+        rec = c.execute("SELECT abs_path FROM floor.files WHERE lane = ? AND session_hint = ?",
+                        [lane, session]).fetchone()
+    origin = str(glob_root(row[0]) / proj / f"{session}.jsonl") if row else f"spool://{lane}/{session}"
+    rec = rec[0] if rec else None
+    if rec is None or rec.startswith("spool://") or Path(rec).parent.name == proj:
+        return session, origin
+    return f"{session}~{proj}", origin
 
 
 def _captured_at(p: Path) -> str:
@@ -64,12 +85,11 @@ def drain_tick(lane: str = "cc_transcript") -> dict:
             bump("unrecognized_left_in_spool")
             continue
 
-        session = (m or snap).group("session")
+        session, origin_path = _route(lane, (m or snap).group("session"), (m or snap).group("proj"))
         state = get_state(lane, session)
         last_ln = state["last_line_no"] if state else 0
         last_off = state["last_offset"] if state else 0
         gen = state["witness_gen"] if state else 1
-        origin_path = f"spool://{lane}/{session}"  # hook lane provenance; scanner upgrades it
 
         raw = p.read_bytes()
 

@@ -24,9 +24,11 @@ JOIN floor.ingest_state s ON s.file_id = r.file_id AND s.witness_gen = r.witness
 CREATE OR REPLACE VIEW dialects.v_cc AS
 SELECT
   r.file_id, r.witness_gen, r.line_no, r.lane, f.abs_path, f.session_hint AS file_key,
-  -- a session-folder file is keyed <project>/<session>/<rest>; its session is the folder
+  -- a session-folder file is keyed <project>/<session>/<rest>; its session is the folder.
+  -- A second copy of a session (same uuid, another project folder) is keyed <uuid>~<project>:
+  -- it is the same session, so session_id is the uuid; file_key keeps the copies apart.
   CASE WHEN r.lane = 'cc_sessiondir' THEN split_part(f.session_hint, '/', 2)
-       ELSE f.session_hint END AS session_id,
+       ELSE split_part(f.session_hint, '~', 1) END AS session_id,
   r.event_time, r.captured_at,
   json_extract_string(r.raw_line, '$.type')       AS ev_type,
   json_extract_string(r.raw_line, '$.message.role')  AS role,
@@ -41,7 +43,8 @@ WHERE r.agent = 'cc' AND json_valid(r.raw_line);
 
 CREATE OR REPLACE VIEW dialects.v_codex AS
 SELECT
-  r.file_id, r.witness_gen, r.line_no, r.lane, f.abs_path, f.session_hint AS session_id,
+  r.file_id, r.witness_gen, r.line_no, r.lane, f.abs_path, f.session_hint AS file_key,
+  split_part(f.session_hint, '~', 1) AS session_id,
   coalesce(r.event_time, TRY_CAST(json_extract_string(r.raw_line,'$.timestamp') AS TIMESTAMPTZ)) AS event_time,
   r.captured_at,
   json_extract_string(r.raw_line, '$.type')            AS envelope_type,
@@ -53,7 +56,8 @@ WHERE r.agent = 'codex' AND json_valid(r.raw_line);
 
 CREATE OR REPLACE VIEW dialects.v_pi AS
 SELECT
-  q.file_id, q.witness_gen, q.line_no, q.lane, q.abs_path, q.session_hint AS session_id,
+  q.file_id, q.witness_gen, q.line_no, q.lane, q.abs_path, q.session_hint AS file_key,
+  split_part(q.session_hint, '~', 1) AS session_id,
   q.event_time, q.captured_at, q.ev_type,
   last_value(CASE WHEN q.ev_type='model_change'
              THEN json_extract_string(q.raw_line,'$.modelId') END IGNORE NULLS)
@@ -112,7 +116,7 @@ CREATE OR REPLACE MACRO derived.lake_rel(lane, file_key, gen) AS
   'lake/' || lane || '/' || file_key || CASE WHEN gen = 1 THEN '' ELSE '.g' || gen END || '.jsonl';
 
 CREATE OR REPLACE VIEW derived.v_messages_all AS
-SELECT CASE WHEN lane = 'cc_sessiondir' THEN 'ccsub:' || file_id ELSE 'cc:' || session_id END
+SELECT CASE WHEN lane = 'cc_sessiondir' THEN 'ccsub:' || file_id ELSE 'cc:' || file_key END
          || ':' || witness_gen || ':' || line_no AS msg_id,
        'claude-code' AS agent, session_id AS session_id, role AS role, model AS model,
        t0 AS text, event_time AS event_time, captured_at AS captured_at,
@@ -124,26 +128,26 @@ SELECT CASE WHEN lane = 'cc_sessiondir' THEN 'ccsub:' || file_id ELSE 'cc:' || s
 FROM (SELECT *, derived.text_of(content) AS t0 FROM dialects.v_cc
       WHERE ev_type IN ('user','assistant') AND role IN ('user','assistant')) x
 UNION ALL BY NAME
-SELECT 'codex:' || session_id || ':' || witness_gen || ':' || line_no AS msg_id,
+SELECT 'codex:' || file_key || ':' || witness_gen || ':' || line_no AS msg_id,
        'codex' AS agent, session_id AS session_id, role AS role, NULL::VARCHAR AS model,
        coalesce(rt, t0) AS text, event_time AS event_time, captured_at AS captured_at,
        file_id AS file_id, witness_gen AS witness_gen, line_no AS line_no,
        (role = 'user' AND (rt IS NOT NULL OR NOT derived.codex_injected(t0))) AS human_authored,
        false AS is_subagent,
-       derived.lake_rel(lane, session_id, witness_gen) AS lake_file
+       derived.lake_rel(lane, file_key, witness_gen) AS lake_file
 FROM (SELECT *, derived.text_of(content) AS t0,
              derived.codex_realtime_input(derived.text_of(content)) AS rt
       FROM dialects.v_codex
       WHERE envelope_type='response_item' AND body_type='message' AND role IN ('user','assistant')) x
 UNION ALL BY NAME
-SELECT 'pi:' || session_id || ':' || witness_gen || ':' || line_no AS msg_id,
+SELECT 'pi:' || file_key || ':' || witness_gen || ':' || line_no AS msg_id,
        'pi' AS agent, session_id AS session_id, role AS role, model AS model,
        derived.text_of(content) AS text, event_time AS event_time,
        captured_at AS captured_at, file_id AS file_id,
        witness_gen AS witness_gen, line_no AS line_no,
        (role = 'user') AS human_authored,
        false AS is_subagent,
-       derived.lake_rel(lane, session_id, witness_gen) AS lake_file
+       derived.lake_rel(lane, file_key, witness_gen) AS lake_file
 FROM dialects.v_pi
 WHERE ev_type='message' AND role IN ('user','assistant');
 

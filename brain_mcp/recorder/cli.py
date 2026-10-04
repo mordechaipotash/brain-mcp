@@ -302,6 +302,14 @@ def cmd_doctor(args) -> int:
     print(f"secrets in floor: {n} distinct" + (f" {rep['by_shape']} — run 'brain-mcp scan-secrets'" if n else " ✓"))
     print(f"search index extension (DuckDB fts): {_fts_state()}")
     print(f"receipt: {api.receipt()['line']}")
+    run = api.runaway_report()
+    if run["files"]:
+        print(f"runaway generations: {len(run['files'])} file(s) with 10+ generations, "
+              f"{run['bytes'] / 1e9:.2f} GB — fixed in 2.1.1, nothing removed automatically; see CHANGELOG")
+        for r in run["files"][:5]:
+            print(f"  {r['generations']:>5} gens  {r['bytes'] / 1e6:>9.1f} MB  {r['lane']}/{r['key']}")
+    else:
+        print("runaway generations: none ✓")
     return 0
 
 
