@@ -1,5 +1,49 @@
 # Changelog
 
+## [2.1.1] — 2026-10-04 — one session id at two paths no longer writes a copy a minute
+
+### Fixed — affects every release from 2.0.0b1 to 2.1.0
+- **A runaway that could fill a disk.** When the same Claude Code session uuid exists in
+  two project folders — renaming a project folder leaves one under each name, each copy
+  with lines the other lacks — the recorder keyed both files by the uuid alone. Every
+  60-second tick it saw "the other" copy as a rewrite and wrote a complete new generation,
+  and flipped back on the next. On the author's Mac (2026-08-24) that was about 2,256 copies
+  of five sessions, 73 GB in four days, 42% CPU and 9.5 GB of RAM. Reproduced on 2026-10-04
+  with a real 3.8 MB session in two folders: 2.1.0 wrote 6 floor files (22.9 MB) in 10 ticks;
+  2.1.1 writes 2 (7.6 MB) and stays there.
+- **Both copies are kept, by path.** The path a session was first recorded at keeps the
+  bare uuid key; any other path carrying that uuid is recorded as `<uuid>~<project>` —
+  `lake/cc_transcript/<uuid>~<project>.jsonl`. Search treats them as one session (same
+  `session_id`, so `claude --resume <id>` works from either folder) with separate
+  citations, and `brain-mcp restore <id>` writes each copy back to its own folder.
+  Duplicates are sightings: neither copy is dropped.
+- **A moved session keeps its identity.** One uuid at one new path, whose recorded path is
+  gone, is a move: the floor follows it instead of reporting a deletion.
+- **The hooks say which copy a turn belongs to.** Spool and offset files are named
+  `<uuid>@<project>` and the drain routes by it (older `<uuid>` names still drain as before).
+  The hook always had the transcript path; the identity code said it did not.
+- **A rewrite cap.** Whatever the cause, a file that opens more than 5 new generations in
+  24 hours stops: the visit writes nothing, reports `rewrite-capped`, and logs one manifest
+  event per file per day; `brain_health` marks the lane `degraded` with the reason. Rewrites
+  were being recorded as `first` sightings, so nothing could have counted them; they are
+  now recorded as `rewrite`.
+
+### If your floor already grew
+`brain-mcp doctor` now lists files with 10 or more generations, their size on disk, and how
+many generations repeat another's size (likely, not verified, identical). Generation files
+are kept by design and **nothing is removed automatically**: check with `doctor`, compare a
+file's generations with `shasum -a 256 ~/.brain/lake/cc_transcript/<uuid>*.jsonl`, and
+remove byte-identical extras yourself if you want the space. A `brain-mcp compact` that does
+this safely is deliberately not in this release.
+
+### Tests
+55 (8 new): two folders over 20 ticks stay two files with no rewrites; one session in
+search with two citations; restore writes both copies; a move keeps its identity; the cap
+stops a flapping file and degrades health with one event; hook spool names route by project
+and old names still drain; doctor reports a runaway without touching the floor. All 8 fail
+against 2.1.0 — six for the reason they name, two only because the cap is new; the duplicate
+tests also fail against 2.1.1 with its per-path keying turned off. Green on DuckDB 1.3.0, 1.5.6, 1.6.0.dev and 2.0.0.dev.
+
 ## [2.1.0] — 2026-10-04 — the receipt: what the agents deleted, and putting it back
 
 ### Added
