@@ -100,14 +100,36 @@ class TestConversationLines:
 
         assert [json.loads(l)["message"]["role"] for l in lines] == ["assistant", "user"]
 
-    def test_skips_system_and_tool_authors(self):
+    def test_keeps_system_and_tool_nodes(self):
+        """The floor keeps what the export held; the dialect view decides what search shows."""
+        from brain_mcp.recorder.import_chatgpt import conversation_lines
+
+        conv = _conv()
+        conv["mapping"]["n8"] = {
+            "id": "n8", "parent": "n2", "children": [],
+            "message": {"author": {"role": "system"}, "create_time": 1673557440.0,
+                        "content": {"content_type": "text", "parts": ["hidden"]}},
+        }
+        conv["mapping"]["n9"] = {   # code-interpreter output keeps its text outside `parts`
+            "id": "n9", "parent": "n2", "children": [],
+            "message": {"author": {"role": "tool", "name": "python"}, "create_time": 1673557441.0,
+                        "content": {"content_type": "execution_output", "text": "42"}},
+        }
+
+        _, lines = conversation_lines(conv)
+
+        records = [json.loads(l)["message"] for l in lines]
+        assert [r["role"] for r in records] == ["user", "assistant", "system", "tool"]
+        assert records[-1]["content"] == [{"type": "text", "text": "42"}]
+
+    def test_a_node_without_a_role_is_not_a_turn(self):
         from brain_mcp.recorder.import_chatgpt import conversation_lines
 
         conv = _conv()
         conv["mapping"]["n9"] = {
             "id": "n9", "parent": "n2", "children": [],
-            "message": {"author": {"role": "system"}, "create_time": 1673557440.0,
-                        "content": {"content_type": "text", "parts": ["hidden"]}},
+            "message": {"author": {}, "create_time": 1673557440.0,
+                        "content": {"content_type": "text", "parts": ["orphan"]}},
         }
 
         _, lines = conversation_lines(conv)
@@ -536,7 +558,7 @@ class TestRecordImport:
         (export,) = event["exports"]
         assert {"name", "size", "sha256"} <= set(export)
         assert event["conversations"] == 1
-        assert event["converter"] == {"name": "import_chatgpt", "v": 1}
+        assert event["converter"]["name"] == "import_chatgpt" and event["converter"]["v"] >= 2
         assert not ({"blob", "chunk_sha256"} & set(event)) and event["event"] != "origin_gone"
         assert api._manifest_index() == before   # chunks / blobs / gone untouched
 
@@ -619,6 +641,79 @@ class TestImportEndToEnd:
         assert out["import"]["written"] == 0 and out["provenance_recorded"] is False
         assert len(_events(floor.home)) == 1
         assert len(self._rows()) == 2
+
+    def test_a_busy_database_does_not_fail_an_import_that_succeeded(self, floor, tmp_path,
+                                                                     capsys, monkeypatch):
+        """The lane is a watch lane: origin files and the import record are already in place,
+        so a held database lock only postpones capture to the next `record` tick."""
+        import argparse
+
+        import duckdb
+
+        from brain_mcp.recorder import cli, scanner
+
+        def busy(*a, **k):
+            raise duckdb.IOException('IO Error: Could not set lock on file "brain.duckdb"')
+
+        archive = _zip(tmp_path, {"conversations.json": [_conv()]})
+        # A scoped patch, never monkeypatch.undo(): that would also undo the fixture's
+        # BRAIN_HOME and send the next scan at the developer's real ~/.brain.
+        with monkeypatch.context() as m:
+            m.setattr(scanner, "scan_tick", busy)
+            rc = cli.cmd_import_chatgpt(argparse.Namespace(source=[str(archive)]))
+        captured = capsys.readouterr()
+
+        assert rc == 0
+        assert "next `record` tick will capture them" in captured.err
+        out = json.loads(captured.out[: captured.out.rindex("}") + 1])
+        assert out["captured"] is False and out["provenance_recorded"] is True
+        assert (floor.home / "imports" / "chatgpt" / "11111111-2222-3333-4444-555555555555.jsonl").exists()
+        assert len(_events(floor.home)) == 1
+        assert str(floor.home).startswith(str(tmp_path))   # still the isolated home
+        floor.record()                                  # the next tick takes them in
+        assert len(self._rows()) == 2
+
+    def test_a_real_held_lock_is_survived_too(self, floor, tmp_path, capsys):
+        """The same, against an actual second process holding the database."""
+        import argparse
+        import subprocess
+        import sys
+        import time
+
+        from brain_mcp.recorder import cli
+        from brain_mcp.recorder.paths import db_path
+
+        holder = subprocess.Popen([sys.executable, "-c",
+                                   f"import duckdb,time; c=duckdb.connect({str(db_path())!r}); "
+                                   f"print('held', flush=True); time.sleep(30)"],
+                                  stdout=subprocess.PIPE, text=True)
+        try:
+            assert holder.stdout.readline().strip() == "held"
+            archive = _zip(tmp_path, {"conversations.json": [_conv()]})
+
+            rc = cli.cmd_import_chatgpt(argparse.Namespace(source=[str(archive)]))
+            err = capsys.readouterr().err
+        finally:
+            holder.kill()
+            holder.wait()
+
+        assert rc == 0 and "holds the database lock" in err
+        assert len(_events(floor.home)) == 1
+
+    def test_system_and_tool_nodes_reach_the_origin_but_not_search(self, floor, tmp_path, capsys):
+        conv = _conv()
+        conv["mapping"]["n8"] = {"id": "n8", "parent": "n2", "children": [], "message": {
+            "author": {"role": "system"}, "create_time": 1673557440.0,
+            "content": {"content_type": "text", "parts": ["hidden"]}}}
+        conv["mapping"]["n9"] = {"id": "n9", "parent": "n2", "children": [], "message": {
+            "author": {"role": "tool"}, "create_time": 1673557441.0,
+            "content": {"content_type": "execution_output", "text": "42"}}}
+
+        rc, _ = self._run(_zip(tmp_path, {"conversations.json": [conv]}), capsys)
+
+        origin = floor.home / "imports" / "chatgpt" / "11111111-2222-3333-4444-555555555555.jsonl"
+        assert rc == 0 and len(origin.read_text().splitlines()) == 4   # the floor keeps all four
+        assert [r[1] for r in self._rows()] == ["user", "assistant"]   # search view is unchanged
 
     def test_a_second_copy_of_a_conversation_is_a_second_file(self, floor, tmp_path, capsys):
         """2.1.1: the same uuid at two paths is two files, keyed <uuid>~<folder>."""

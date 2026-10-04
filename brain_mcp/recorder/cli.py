@@ -334,7 +334,7 @@ def cmd_restore(args) -> int:
 
 def cmd_import_chatgpt(args) -> int:
     """Convert a ChatGPT export into the lane origin, then capture it."""
-    _init()
+    ensure_layout(LANES)   # files only: converting and recording need no database
     from .import_chatgpt import convert, record_import
 
     sources = [Path(s).expanduser() for s in args.source]
@@ -356,19 +356,34 @@ def cmd_import_chatgpt(args) -> int:
     # floor's own ledger, and a citation is only as checkable as its chain of origin.
     recorded = record_import(census["provenance"])
 
-    # An import is not done until the floor holds it.
+    # An import is not done until the floor holds it — but the lane is a watch lane, so this
+    # scan is a convenience: the origin files and the import record are already in place, and
+    # the next `record` tick captures them. A busy database must not turn that into a failure.
+    import duckdb
+
+    from .floor_db import init_db
     from .scanner import scan_tick
     from . import derived
 
-    scan = scan_tick(only_lane="chatgpt_export")
-    capped = (scan.get("chatgpt_export") or {}).get("rewrite-capped")
-    if capped:
-        print(f"warning: {capped} conversation(s) hit the rewrite cap and were not captured this "
-              f"time — the import record states what was written, not what the floor holds",
-              file=sys.stderr)
-    refreshed = derived.refresh()
-    print(json.dumps({"import": census, "provenance_recorded": recorded, "scan": scan,
-                      "derived": refreshed}, indent=2, default=str))
+    scan = refreshed = None
+    try:
+        init_db()
+        scan = scan_tick(only_lane="chatgpt_export")
+        capped = (scan.get("chatgpt_export") or {}).get("rewrite-capped")
+        if capped:
+            print(f"warning: {capped} conversation(s) hit the rewrite cap and were not captured this "
+                  f"time — the import record states what was written, not what the floor holds",
+                  file=sys.stderr)
+        refreshed = derived.refresh()
+    except duckdb.IOException as e:
+        if "lock" not in str(e).lower():
+            raise
+        print("note: the conversations are in place under imports/chatgpt and the import is "
+              "recorded; another brain-mcp process holds the database lock, so the next `record` "
+              "tick will capture them.", file=sys.stderr)
+    print(json.dumps({"import": census, "provenance_recorded": recorded,
+                      "captured": refreshed is not None, "scan": scan, "derived": refreshed},
+                     indent=2, default=str))
     return 0
 
 

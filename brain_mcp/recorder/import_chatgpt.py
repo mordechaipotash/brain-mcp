@@ -39,7 +39,7 @@ _UUID_LEN = 36
 
 # Bump when the converter's output for the same export would change: the provenance
 # event carries it so a replay of an old import uses the converter that wrote it.
-CONVERTER = {"name": "import_chatgpt", "v": 1}
+CONVERTER = {"name": "import_chatgpt", "v": 2}  # v2: system and tool nodes are kept
 
 
 def _iso(epoch: float | int | None) -> str | None:
@@ -107,8 +107,11 @@ def conversation_lines(conv: dict) -> tuple[str, list[str]]:
         message = node.get("message")
         if not isinstance(message, dict):
             continue
+        # Every role the export held: system prompts and tool output (code interpreter,
+        # browsing) are part of the conversation. Which of them search shows is the
+        # dialect view's call, not the recorder's.
         role = (message.get("author") or {}).get("role")
-        if role not in ("user", "assistant"):
+        if not isinstance(role, str) or not role:
             continue
         blocks = _text_parts(message)
         if not blocks:
