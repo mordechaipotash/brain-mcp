@@ -115,7 +115,8 @@ it does NOT mean "it never happened". Never fill an abstention with your own gue
                                 a rewrite opens <session>.g2.jsonl — old kept, never deleted
   lake/cc_sessiondir/<project>/<session>/...   a CC session's folder, mirrored at the
                                 same relative paths (subagents/, tool-results/, *.meta.json)
-  manifest/manifest.jsonl       one versioned line per chunk: byte range, line range, sha256
+  manifest/manifest.jsonl       versioned lines: a chunk's byte range, line range and sha256; events
+                                (origin_gone, restored, rewrite_capped, import)
   offsets/<lane>/<session>      hook fast-path line counters
   health/*.last_run             side-effect heartbeats (mtimes are the proof, never a report)
   brain.duckdb                  the index — a cache, re-derivable from lake/ + manifest/
@@ -134,8 +135,48 @@ brain-mcp doctor                  # capture status, health, fts cache, the recei
 brain-mcp restore [<id>] [--list] [--to DIR] [--dry-run]   # put a deleted session back
 brain-mcp redact <file> --lines A B --reason "..."   # tombstone a secret; audited in manifest
 brain-mcp migrate-v1 <all_conversations.parquet>     # import v1 data (marked v1_derived)
+brain-mcp import-chatgpt <export.zip|conversations.json|dir>   # a ChatGPT export → the chatgpt_export lane
 brain-mcp uninstall               # removes hooks + scheduler; your floor is KEPT
 ```
+
+## ChatGPT
+
+ChatGPT keeps no local session files, so there is nothing for a lane to watch. Its history
+enters through a one-time export instead:
+
+1. ChatGPT → Settings → Data Controls → Export Data, then download the emailed ZIP.
+2. `brain-mcp import-chatgpt ~/Downloads/chatgpt-export.zip` — the ZIP is read in place, nothing
+   is extracted. Large accounts are split into `conversations-000.json`, `-001.json`, and so on;
+   all of them are read. An already unzipped folder (with the `conversations*.json` files at its top level) or a single
+   `conversations.json` works too.
+
+The converter writes one `<conversation_id>.jsonl` per conversation into
+`~/.brain/imports/chatgpt/` — a manufactured origin the `chatgpt_export` watch lane then
+captures like any other. Re-running over an unchanged export rewrites nothing, so it is safe
+to repeat after each new export; only new and changed conversations move.
+
+The export's `mapping` is a tree: a regenerated answer is a sibling branch, not a
+replacement. Every message node is emitted, ordered by its own clock, with `parent_id`
+preserved — so no branch is silently dropped and any root-to-leaf path stays reconstructable.
+
+### Where an import came from
+
+The converted file is not your original bytes, so each import also leaves one `import` event in
+the manifest: the name, size and sha256 of the export (the ZIP, and every `conversations*.json`
+inside it), the conversation count, and the converter version. To check a ChatGPT citation back
+to your own export:
+
+```bash
+sha256sum ~/Downloads/chatgpt-export.zip      # the export, as you hold it
+unzip -p ~/Downloads/chatgpt-export.zip conversations-000.json | sha256sum   # a member
+grep '"event":"import"' ~/.brain/manifest/manifest.jsonl    # both hashes are on record
+```
+
+Then look the conversation id (the file name under `lake/chatgpt_export/`) up in that
+`conversations*.json`. The manifest is an event log: a re-import after another import is recorded
+again, an immediate repeat of the same one is not. The event states what was written into the
+origin; the scan that follows decides what the floor holds (the CLI warns if a file hit the
+rewrite cap, which a changed conversation title can trigger).
 
 ## v1 → v2
 
@@ -146,6 +187,47 @@ structurally impossible. v1's 25 tools became 7: the synthesis tools ("cognitive
 this server makes. Migration: `brain-mcp migrate-v1` — v1 rows are kept, marked as derived,
 and floor-backed rows win wherever the source still exists.
 
-Windows: out of scope for v2.0. Scheduling is LaunchAgent (macOS) / systemd user timer (Linux).
+## Scheduling
+
+`brain-mcp install` writes a 60-second LaunchAgent on macOS. On Linux it does **not** install
+anything — it prints a reminder, and the timer is yours to create. Without it the hooks keep
+filling the spool and nothing ever drains it, so `brain-mcp health` goes stale while capture
+looks fine. The two units:
+
+```ini
+# ~/.config/systemd/user/brain-mcp-record.service
+[Unit]
+Description=brain-mcp capture tick (drain spool, scan lanes, refresh index)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/brain-mcp record
+TimeoutStartSec=600
+Nice=10
+IOSchedulingClass=idle
+```
+
+```ini
+# ~/.config/systemd/user/brain-mcp-record.timer
+[Unit]
+Description=Run brain-mcp capture tick every 60 seconds
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=brain-mcp-record.service
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now brain-mcp-record.timer
+loginctl enable-linger "$USER"   # keep recording when you are not logged in
+```
+
+Windows: out of scope for v2.0.
 
 MIT.

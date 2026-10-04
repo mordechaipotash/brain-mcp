@@ -6,6 +6,8 @@
                        (rewrites open a new generation: <session>.g2.jsonl; old kept)
   manifest/manifest.jsonl   append-only, versioned lines ({"v":1,...})
   offsets/<lane>/<session>  line-count + prefix-fingerprint (rewrite detection)
+  imports/<source>/    manufactured origin for sources with no local files
+                       (a ChatGPT export becomes <conversation>.jsonl here)
   health/              side-effect heartbeats (mtimes are the signal, never self-report)
   brain.duckdb         CACHE — fully re-derivable from lake/ + manifest/
 """
@@ -34,6 +36,11 @@ def manifest_path() -> Path:
 
 def offsets_dir(lane: str) -> Path:
     return brain_home() / "offsets" / lane
+
+
+def imports_dir(source: str) -> Path:
+    """Origin for sources with no local files of their own (e.g. a ChatGPT export)."""
+    return brain_home() / "imports" / source
 
 
 def health_dir() -> Path:
