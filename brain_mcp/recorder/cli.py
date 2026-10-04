@@ -335,7 +335,7 @@ def cmd_restore(args) -> int:
 def cmd_import_chatgpt(args) -> int:
     """Convert a ChatGPT export into the lane origin, then capture it."""
     _init()
-    from .import_chatgpt import convert
+    from .import_chatgpt import convert, record_import
 
     sources = [Path(s).expanduser() for s in args.source]
     missing = [str(s) for s in sources if not s.exists()]
@@ -352,14 +352,23 @@ def cmd_import_chatgpt(args) -> int:
         print("nothing to capture: no conversations found in the export", file=sys.stderr)
         return 1
 
+    # Where it came from goes on record before the floor takes it in: the manifest is the
+    # floor's own ledger, and a citation is only as checkable as its chain of origin.
+    recorded = record_import(census["provenance"])
+
     # An import is not done until the floor holds it.
     from .scanner import scan_tick
     from . import derived
 
     scan = scan_tick(only_lane="chatgpt_export")
+    capped = (scan.get("chatgpt_export") or {}).get("rewrite-capped")
+    if capped:
+        print(f"warning: {capped} conversation(s) hit the rewrite cap and were not captured this "
+              f"time — the import record states what was written, not what the floor holds",
+              file=sys.stderr)
     refreshed = derived.refresh()
-    print(json.dumps({"import": census, "scan": scan, "derived": refreshed},
-                     indent=2, default=str))
+    print(json.dumps({"import": census, "provenance_recorded": recorded, "scan": scan,
+                      "derived": refreshed}, indent=2, default=str))
     return 0
 
 

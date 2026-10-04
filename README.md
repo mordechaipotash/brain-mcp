@@ -115,7 +115,8 @@ it does NOT mean "it never happened". Never fill an abstention with your own gue
                                 a rewrite opens <session>.g2.jsonl — old kept, never deleted
   lake/cc_sessiondir/<project>/<session>/...   a CC session's folder, mirrored at the
                                 same relative paths (subagents/, tool-results/, *.meta.json)
-  manifest/manifest.jsonl       one versioned line per chunk: byte range, line range, sha256
+  manifest/manifest.jsonl       versioned lines: a chunk's byte range, line range and sha256; events
+                                (origin_gone, restored, rewrite_capped, import)
   offsets/<lane>/<session>      hook fast-path line counters
   health/*.last_run             side-effect heartbeats (mtimes are the proof, never a report)
   brain.duckdb                  the index — a cache, re-derivable from lake/ + manifest/
@@ -157,6 +158,25 @@ to repeat after each new export; only new and changed conversations move.
 The export's `mapping` is a tree: a regenerated answer is a sibling branch, not a
 replacement. Every message node is emitted, ordered by its own clock, with `parent_id`
 preserved — so no branch is silently dropped and any root-to-leaf path stays reconstructable.
+
+### Where an import came from
+
+The converted file is not your original bytes, so each import also leaves one `import` event in
+the manifest: the name, size and sha256 of the export (the ZIP, and every `conversations*.json`
+inside it), the conversation count, and the converter version. To check a ChatGPT citation back
+to your own export:
+
+```bash
+sha256sum ~/Downloads/chatgpt-export.zip      # the export, as you hold it
+unzip -p ~/Downloads/chatgpt-export.zip conversations-000.json | sha256sum   # a member
+grep '"event":"import"' ~/.brain/manifest/manifest.jsonl    # both hashes are on record
+```
+
+Then look the conversation id (the file name under `lake/chatgpt_export/`) up in that
+`conversations*.json`. The manifest is an event log: a re-import after another import is recorded
+again, an immediate repeat of the same one is not. The event states what was written into the
+origin; the scan that follows decides what the floor holds (the CLI warns if a file hit the
+rewrite cap, which a changed conversation title can trigger).
 
 ## v1 → v2
 

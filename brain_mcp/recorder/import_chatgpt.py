@@ -22,6 +22,7 @@ UTC, no `datetime.now()`, and no `hash()` (salted per process).
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import json
 import uuid
 import zipfile
@@ -29,11 +30,16 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from .paths import imports_dir
+from . import manifest
+from .paths import imports_dir, manifest_path
 
 # Namespace for deriving a stable id when an export row carries none.
 _NS = uuid.UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")  # RFC-4122 URL namespace
 _UUID_LEN = 36
+
+# Bump when the converter's output for the same export would change: the provenance
+# event carries it so a replay of an old import uses the converter that wrote it.
+CONVERTER = {"name": "import_chatgpt", "v": 1}
 
 
 def _iso(epoch: float | int | None) -> str | None:
@@ -151,12 +157,17 @@ def _looks_like_zip(path: Path) -> bool:
         return False
 
 
-def _export_chunks(path: Path) -> Iterator[tuple[str, bytes | None, str | None]]:
-    """(name, raw bytes, read error) for each conversations*.json behind `path`.
+# (label, raw bytes, read error, export file, (member path, index) or None)
+_Chunk = tuple[str, "bytes | None", "str | None", Path, "tuple[str, int] | None"]
+
+
+def _export_chunks(path: Path) -> Iterator[_Chunk]:
+    """One chunk per conversations*.json behind `path`.
 
     `path` may be a JSON file, a directory (exports get split), or the ZIP that
     ChatGPT hands out. ZIP members are read in memory and never extracted, so a
-    hostile member name cannot write anywhere.
+    hostile member name cannot write anywhere. The export file and member each
+    chunk came from ride along: provenance is recorded from what was actually read.
     """
     if path.is_file() and _looks_like_zip(path):
         try:
@@ -167,29 +178,98 @@ def _export_chunks(path: Path) -> Iterator[tuple[str, bytes | None, str | None]]
                                   if not i.is_dir() and _is_conversations_json(i.filename)),
                                  key=lambda i: (i.filename, i.header_offset))
                 if not members:
-                    yield path.name, None, "no conversations*.json in archive"
+                    yield path.name, None, "no conversations*.json in archive", path, None
                 for info in members:
                     label = f"{path.name}:{info.filename}"
+                    ref = (info.filename, info.header_offset)
                     try:
-                        yield label, zf.read(info), None
+                        yield label, zf.read(info), None, path, ref
                     except Exception as e:  # zlib.error, EOFError, LZMAError, RuntimeError, …
-                        yield label, None, f"{type(e).__name__}: {e}"
+                        yield label, None, f"{type(e).__name__}: {e}", path, ref
         except Exception as e:  # BadZipFile (truncated download), OSError, NotImplementedError, …
-            yield path.name, None, f"{type(e).__name__}: {e} (incomplete download?)"
+            yield path.name, None, f"{type(e).__name__}: {e} (incomplete download?)", path, None
         return
 
     if path.is_dir():
         files = sorted(path.glob("conversations*.json"))
         if not files:
             hint = " — pass the .zip itself" if any(path.glob("*.zip")) else ""
-            yield path.name, None, f"no conversations*.json in directory{hint}"
+            yield path.name, None, f"no conversations*.json in directory{hint}", path, None
     else:
         files = [path]
     for f in files:
         try:
-            yield f.name, f.read_bytes(), None
+            yield f.name, f.read_bytes(), None, f, (f.name, 0)
         except OSError as e:
-            yield f.name, None, f"{type(e).__name__}: {e}"
+            yield f.name, None, f"{type(e).__name__}: {e}", f, (f.name, 0)
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _export_entry(path: Path) -> dict:
+    """The export file as the user holds it: what `sha256sum` on it would print."""
+    entry: dict = {"name": path.name, "members": []}
+    try:
+        entry["size"] = path.stat().st_size
+        entry["sha256"] = _sha256_file(path)
+    except OSError as e:
+        entry["error"] = f"{type(e).__name__}: {e}"
+    return entry
+
+
+def import_id(exports: list[dict]) -> str:
+    """Order-independent identity of an import: the export and member hashes, plus the
+    converter version. A re-zipped export with the same member gets its own id, so the
+    `sha256sum` of *that* zip is on record."""
+    parts = sorted(h for e in exports for h in
+                   [e.get("sha256")] + [m.get("sha256") for m in e["members"]] if h)
+    return hashlib.sha256("\n".join([f"{CONVERTER['name']}/{CONVERTER['v']}", *parts]).encode()).hexdigest()[:16]
+
+
+def _last_import_id() -> str | None:
+    """The import_id of the newest `import` event in the manifest, if any. A byte
+    prefilter keeps this one pass cheap on a manifest with a line per captured chunk."""
+    mp = manifest_path()
+    if not mp.exists():
+        return None
+    last = None
+    with open(mp, "rb") as f:
+        for raw in f:
+            if b'"event":"import"' not in raw:  # closing quote: not "import_files"
+                continue
+            try:
+                last = json.loads(raw).get("import_id") or last
+            except Exception:
+                continue
+    return last
+
+
+def record_import(provenance: dict) -> bool:
+    """Append one `import` event to the manifest. Returns whether a line was written.
+
+    The manifest is an event log, so a real re-import is recorded again; only an
+    immediate repeat of the previous import (a double start) is suppressed. The event
+    states what was written into the origin, not what the floor holds yet — the scan
+    that follows decides that. No top-level `blob`/`chunk_sha256`/`origin_gone`: older
+    manifest readers must keep ignoring it.
+    """
+    if not provenance.get("conversations"):
+        return False
+    iid = provenance["import_id"]
+    if _last_import_id() == iid:
+        return False
+    manifest.append({
+        "event": "import", "importer": "chatgpt_export", "lane": "chatgpt_export",
+        "import_id": iid, "converter": CONVERTER, "imported_at": manifest.now_iso(),
+        "conversations": provenance["conversations"], "exports": provenance["exports"],
+    })
+    return True
 
 
 def convert(sources: list[Path], dest: Path | None = None) -> dict:
@@ -203,24 +283,38 @@ def convert(sources: list[Path], dest: Path | None = None) -> dict:
     census = {"files_read": 0, "conversations": 0, "messages": 0,
               "written": 0, "unchanged": 0, "skipped_empty": 0,
               "dest": str(out_dir), "errors": []}
+    exports: dict[Path, dict] = {}
 
     for source in sources:
-        for name, data, error in _export_chunks(source):
+        for name, data, error, export_path, ref in _export_chunks(source):
+            entry = exports.get(export_path)
+            if entry is None:
+                entry = exports[export_path] = _export_entry(export_path)
+            member = {"path": ref[0], "index": ref[1]} if ref else None
             if data is None:
                 census["errors"].append(f"{name}: {error}")
+                entry["members"].append({**(member or {"path": export_path.name, "index": 0}),
+                                         "error": error})
                 continue
+            if member is not None:
+                member["size"] = len(data)
+                member["sha256"] = hashlib.sha256(data).hexdigest()  # before `del data` below
             try:
                 conversations = json.loads(data.decode("utf-8-sig"))
             except (UnicodeDecodeError, json.JSONDecodeError) as e:
                 census["errors"].append(f"{name}: {type(e).__name__}: {e}")
+                entry["members"].append({**member, "error": f"{type(e).__name__}: {e}"})
                 continue
             finally:
                 del data  # an export can exceed 1 GB; do not hold the raw bytes too
             if not isinstance(conversations, list):
                 census["errors"].append(f"{name}: expected a JSON array of conversations")
+                entry["members"].append({**member, "error": "expected a JSON array of conversations"})
                 continue
 
             census["files_read"] += 1
+            member["conversations"] = sum(1 for c in conversations if isinstance(c, dict))
+            entry["members"].append(member)
             for conv in conversations:
                 if not isinstance(conv, dict):
                     continue
@@ -242,4 +336,7 @@ def convert(sources: list[Path], dest: Path | None = None) -> dict:
                 tmp.replace(target)
                 census["written"] += 1
 
+    export_list = list(exports.values())
+    census["provenance"] = {"import_id": import_id(export_list), "exports": export_list,
+                            "conversations": census["conversations"]}
     return census

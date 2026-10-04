@@ -7,6 +7,7 @@ every message node survives, the output is byte-stable across runs, and the
 emitted shape is the one the dialect view reads.
 """
 
+import hashlib
 import json
 import uuid
 import zipfile
@@ -426,6 +427,219 @@ class TestConvertZip:
         created = {p for p in tmp_path.rglob("*")} - before
         assert all(dest == p or dest in p.parents for p in created)
         assert not (tmp_path.parent / "conversations.json").exists()
+
+
+class TestProvenance:
+    """Where an import came from: hashes of what was read, on the manifest."""
+
+    def test_zip_and_member_hashes_match_sha256sum(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = _zip(tmp_path, {"conversations.json": [_conv()], "user.json": {"id": "x"}})
+        member_bytes = json.dumps([_conv()]).encode()
+
+        prov = convert([archive], dest=tmp_path / "out")["provenance"]
+
+        (export,) = prov["exports"]
+        assert export["name"] == "export.zip"
+        assert export["size"] == archive.stat().st_size
+        assert export["sha256"] == hashlib.sha256(archive.read_bytes()).hexdigest()
+        (member,) = export["members"]
+        assert member["path"] == "conversations.json"
+        assert member["size"] == len(member_bytes)
+        assert member["sha256"] == hashlib.sha256(member_bytes).hexdigest()
+        assert member["conversations"] == 1
+        assert prov["conversations"] == 1
+
+    def test_plain_file_is_its_own_member(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        src = _write_export(tmp_path, [_conv()])
+
+        (export,) = convert([src], dest=tmp_path / "out")["provenance"]["exports"]
+
+        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+        assert export["sha256"] == digest
+        assert export["members"][0]["sha256"] == digest
+
+    def test_directory_records_one_export_per_file(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        _write_export(tmp_path, [_conv()], name="conversations-000.json")
+        _write_export(tmp_path, [_conv(id="99999999-8888-7777-6666-555555555555")],
+                      name="conversations-001.json")
+
+        exports = convert([tmp_path], dest=tmp_path / "out")["provenance"]["exports"]
+
+        assert [e["name"] for e in exports] == ["conversations-000.json", "conversations-001.json"]
+
+    def test_unreadable_member_is_on_the_record_with_its_error(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = _zip(tmp_path, {"conversations-000.json": [_conv()],
+                                  "conversations-001.json": "{not json"})
+
+        (export,) = convert([archive], dest=tmp_path / "out")["provenance"]["exports"]
+
+        by_path = {m["path"]: m for m in export["members"]}
+        assert "conversations" in by_path["conversations-000.json"]
+        assert "JSONDecodeError" in by_path["conversations-001.json"]["error"]
+        assert by_path["conversations-001.json"]["sha256"]  # what was read is still pinned
+
+    def test_import_id_does_not_depend_on_source_order(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        a = _write_export(tmp_path, [_conv()], name="conversations-000.json")
+        b = _write_export(tmp_path, [_conv(id="99999999-8888-7777-6666-555555555555")],
+                          name="conversations-001.json")
+
+        one = convert([a, b], dest=tmp_path / "o1")["provenance"]["import_id"]
+        two = convert([b, a], dest=tmp_path / "o2")["provenance"]["import_id"]
+
+        assert one == two
+
+    def test_a_repacked_zip_gets_its_own_id(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        first = _zip(tmp_path, {"conversations.json": [_conv()]}, name="a.zip")
+        second = _zip(tmp_path, {"conversations.json": [_conv()], "extra.txt": "x"}, name="b.zip")
+
+        assert (convert([first], dest=tmp_path / "o1")["provenance"]["import_id"]
+                != convert([second], dest=tmp_path / "o2")["provenance"]["import_id"])
+
+
+def _events(home: Path) -> list[dict]:
+    mp = home / "manifest" / "manifest.jsonl"
+    return [json.loads(l) for l in mp.read_text().splitlines() if '"event":"import"' in l] \
+        if mp.exists() else []
+
+
+class TestRecordImport:
+    """The manifest event: an event log with double-start protection."""
+
+    def _prov(self, tmp_path, *convs, name="conversations.json"):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        src = _write_export(tmp_path, list(convs), name=name)
+        return convert([src], dest=tmp_path / f"out-{name}")["provenance"]
+
+    def test_event_carries_the_ask_and_stays_invisible_to_manifest_readers(self, floor, tmp_path):
+        from brain_mcp.recorder import api
+        from brain_mcp.recorder.import_chatgpt import record_import
+
+        prov = self._prov(tmp_path, _conv())
+        before = api._manifest_index()
+
+        assert record_import(prov) is True
+
+        (event,) = _events(floor.home)
+        (export,) = event["exports"]
+        assert {"name", "size", "sha256"} <= set(export)
+        assert event["conversations"] == 1
+        assert event["converter"] == {"name": "import_chatgpt", "v": 1}
+        assert not ({"blob", "chunk_sha256"} & set(event)) and event["event"] != "origin_gone"
+        assert api._manifest_index() == before   # chunks / blobs / gone untouched
+
+    def test_immediate_repeat_is_suppressed(self, floor, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import record_import
+
+        prov = self._prov(tmp_path, _conv())
+
+        assert record_import(prov) is True
+        assert record_import(prov) is False
+        assert len(_events(floor.home)) == 1
+
+    def test_a_real_reimport_after_another_import_is_recorded_again(self, floor, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import record_import
+
+        a = self._prov(tmp_path, _conv(), name="a.json")
+        b = self._prov(tmp_path, _conv(id="99999999-8888-7777-6666-555555555555"), name="b.json")
+
+        assert [record_import(p) for p in (a, b, a)] == [True, True, True]
+        assert len(_events(floor.home)) == 3
+
+    def test_nothing_is_recorded_when_no_conversation_was_read(self, floor, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert, record_import
+
+        bad = tmp_path / "conversations.json"
+        bad.write_text("{not json", encoding="utf-8")
+        prov = convert([bad], dest=tmp_path / "out")["provenance"]
+
+        assert record_import(prov) is False
+        assert _events(floor.home) == []
+
+
+class TestImportEndToEnd:
+    """`import-chatgpt` through the real CLI path: convert, record, scan, derive."""
+
+    def _run(self, source, capsys):
+        import argparse
+
+        from brain_mcp.recorder import cli
+
+        rc = cli.cmd_import_chatgpt(argparse.Namespace(source=[str(source)]))
+        out = capsys.readouterr().out
+        return rc, json.loads(out[: out.rindex("}") + 1])
+
+    def _rows(self):
+        from brain_mcp.recorder.floor_db import read_conn
+
+        with read_conn() as c:
+            return c.execute(
+                "SELECT msg_id, role, human_authored, is_subagent, lake_file, witness_gen "
+                "FROM derived.messages WHERE agent = 'chatgpt' ORDER BY line_no").fetchall()
+
+    def test_rows_carry_the_2_1_columns_and_cite_an_existing_file(self, floor, tmp_path, capsys):
+        from brain_mcp.recorder import api
+
+        archive = _zip(tmp_path, {"conversations.json": [_conv()]})
+
+        rc, out = self._run(archive, capsys)
+
+        assert rc == 0 and out["provenance_recorded"] is True
+        rows = self._rows()
+        assert len(rows) == 2
+        for msg_id, role, human, sub, lake_file, gen in rows:
+            assert human == (role == "user") and sub is False
+            assert lake_file == f"lake/chatgpt_export/11111111-2222-3333-4444-555555555555.jsonl"
+            assert gen == 1
+        hits = api.recent(hours=24 * 365 * 10, agent="chatgpt")["hits"]
+        assert len(hits) == 2   # the default filters keep them: user text is "human", not a subagent
+        for hit in hits:
+            assert hit["citation"]["file"] == rows[0][4]
+            assert hit["citation"]["sha256"] is not None   # the file exists and the span hashes
+
+    def test_rerun_records_nothing_new_and_inserts_no_duplicates(self, floor, tmp_path, capsys):
+        archive = _zip(tmp_path, {"conversations.json": [_conv()]})
+        self._run(archive, capsys)
+
+        rc, out = self._run(archive, capsys)
+
+        assert rc == 0
+        assert out["import"]["written"] == 0 and out["provenance_recorded"] is False
+        assert len(_events(floor.home)) == 1
+        assert len(self._rows()) == 2
+
+    def test_a_second_copy_of_a_conversation_is_a_second_file(self, floor, tmp_path, capsys):
+        """2.1.1: the same uuid at two paths is two files, keyed <uuid>~<folder>."""
+        from brain_mcp.recorder import derived
+        from brain_mcp.recorder.paths import imports_dir
+        from brain_mcp.recorder.scanner import scan_tick
+
+        self._run(_zip(tmp_path, {"conversations.json": [_conv()]}), capsys)
+        origin = imports_dir("chatgpt")
+        name = "11111111-2222-3333-4444-555555555555.jsonl"
+        (origin / "copy").mkdir()
+        (origin / "copy" / name).write_bytes((origin / name).read_bytes())
+
+        scan_tick(only_lane="chatgpt_export")
+        derived.refresh()
+
+        rows = self._rows()
+        assert len({r[0] for r in rows}) == 4                       # msg_ids do not collide
+        assert {r[4] for r in rows} == {f"lake/chatgpt_export/{name}",
+                                        f"lake/chatgpt_export/{name[:-6]}~copy.jsonl"}
+        assert all((floor.home / r[4]).exists() for r in rows)      # both citations resolve
 
 
 class TestLaneWiring:
