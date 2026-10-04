@@ -48,13 +48,31 @@ _CC_SETTINGS = Path("~/.claude/settings.json").expanduser()
 
 
 def _cc_hooks_present(settings: dict) -> str | None:
-    """Detect ANY existing CC capture hooks — including a private m-plugin pair —
-    so we never double-spool (spec §10 decision 5)."""
+    """Detect ANY existing CC capture hooks so we never double-spool.
+
+    Looks in TWO places, because hooks arrive from two: settings.json, and
+    installed plugins (whose hooks/hooks.json never appears in settings).
+    Checking only settings.json missed a live capture pipeline on the author's
+    own machine — measured 2026-08-20, before the first real install.
+    """
     blob = json.dumps(settings.get("hooks", {}))
     if "brain-stream-on-turn" in blob:
-        return "brain (already installed)"
+        return "brain (already installed via settings.json)"
     if "cc-stream-on-turn" in blob:
-        return "another capture pipeline (m-plugin style cc-stream hooks)"
+        return "another capture pipeline (cc-stream hooks in settings.json)"
+
+    # plugin-provided hooks
+    plugin_root = Path("~/.claude/plugins").expanduser()
+    if plugin_root.exists():
+        for hooks_json in plugin_root.glob("**/hooks/hooks.json"):
+            try:
+                text = hooks_json.read_text()
+            except Exception:
+                continue
+            if "brain-stream-on-turn" in text:
+                return f"brain (already installed as a plugin: {hooks_json.parent.parent.name})"
+            if "cc-stream-on-turn" in text or "stream-on-sessionend" in text:
+                return f"another capture pipeline (plugin: {hooks_json.parent.parent.name})"
     return None
 
 

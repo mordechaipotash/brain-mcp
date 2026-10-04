@@ -1,16 +1,21 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.mordechaipotash/brain-mcp",
-  "title": "brain — the recorder",
-  "description": "The recorder for your AI conversations: captures Claude Code/Codex/Pi history at source, keeps byte-exact originals with sha256 manifests, and serves 7 cited-or-abstain tools with honest per-lane health.",
+  "title": "brain \u2014 the recorder",
+  "description": "Records your Claude Code, Codex and Pi history before deletion. Cited-or-abstain recall.",
   "version": "2.0.0b3",
-  "repository": { "url": "https://github.com/mordechaipotash/brain-mcp", "source": "github" },
+  "repository": {
+    "url": "https://github.com/mordechaipotash/brain-mcp",
+    "source": "github"
+  },
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "brain-mcp",
       "version": "2.0.0b3",
-      "transport": { "type": "stdio" },
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
         {
           "name": "BRAIN_HOME",
