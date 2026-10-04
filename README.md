@@ -134,7 +134,7 @@ brain-mcp doctor                  # capture status, health, fts cache, the recei
 brain-mcp restore [<id>] [--list] [--to DIR] [--dry-run]   # put a deleted session back
 brain-mcp redact <file> --lines A B --reason "..."   # tombstone a secret; audited in manifest
 brain-mcp migrate-v1 <all_conversations.parquet>     # import v1 data (marked v1_derived)
-brain-mcp import-chatgpt <conversations.json|dir>    # a ChatGPT export → the chatgpt_export lane
+brain-mcp import-chatgpt <export.zip|conversations.json|dir>   # a ChatGPT export → the chatgpt_export lane
 brain-mcp uninstall               # removes hooks + scheduler; your floor is KEPT
 ```
 
@@ -144,8 +144,9 @@ ChatGPT keeps no local session files, so there is nothing for a lane to watch. I
 enters through a one-time export instead:
 
 1. ChatGPT → Settings → Data Controls → Export Data, then download the emailed ZIP.
-2. Unzip it. Large accounts are split into `conversations-000.json`, `-001.json`, and so on.
-3. `brain-mcp import-chatgpt ~/Downloads/chatgpt-export/`
+2. `brain-mcp import-chatgpt ~/Downloads/chatgpt-export.zip` — the ZIP is read in place, nothing
+   is extracted. Large accounts are split into `conversations-000.json`, `-001.json`, and so on;
+   all of them are read. An already unzipped folder or a single `conversations.json` works too.
 
 The converter writes one `<conversation_id>.jsonl` per conversation into
 `~/.brain/imports/chatgpt/` — a manufactured origin the `chatgpt_export` watch lane then

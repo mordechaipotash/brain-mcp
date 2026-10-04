@@ -9,6 +9,7 @@ emitted shape is the one the dialect view reads.
 
 import json
 import uuid
+import zipfile
 from pathlib import Path
 
 
@@ -254,6 +255,101 @@ class TestConvert:
         convert([src], dest=dest)
 
         assert not list(dest.glob(".*"))  # tmp files are dot-prefixed while partial
+
+
+def _zip(tmp_path: Path, members: dict, name="export.zip") -> Path:
+    p = tmp_path / name
+    with zipfile.ZipFile(p, "w") as zf:
+        for member, payload in members.items():
+            zf.writestr(member, payload if isinstance(payload, (str, bytes)) else json.dumps(payload))
+    return p
+
+
+class TestConvertZip:
+    """ChatGPT hands out a .zip; it is read in place, never extracted."""
+
+    def test_zip_yields_the_same_bytes_as_the_unzipped_export(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        convs = [_conv()]
+        plain = _write_export(tmp_path, convs)
+        archive = _zip(tmp_path, {"conversations.json": convs})
+
+        convert([plain], dest=tmp_path / "a")
+        census = convert([archive], dest=tmp_path / "b")
+
+        name = "11111111-2222-3333-4444-555555555555.jsonl"
+        assert census["errors"] == []
+        assert (tmp_path / "a" / name).read_bytes() == (tmp_path / "b" / name).read_bytes()
+
+    def test_zip_reads_every_chunk_of_a_split_export(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = _zip(tmp_path, {
+            "conversations-000.json": [_conv()],
+            "conversations-001.json": [_conv(id="99999999-8888-7777-6666-555555555555")],
+            "user.json": {"id": "not a conversation list"},
+        })
+
+        census = convert([archive], dest=tmp_path / "out")
+
+        assert census["files_read"] == 2
+        assert census["conversations"] == 2
+        assert census["errors"] == []
+
+    def test_zip_member_in_a_subfolder_is_found(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = _zip(tmp_path, {"export-2026/conversations.json": [_conv()]})
+
+        census = convert([archive], dest=tmp_path / "out")
+
+        assert census["conversations"] == 1
+
+    def test_second_zip_run_rewrites_nothing(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = _zip(tmp_path, {"conversations.json": [_conv()]})
+        dest = tmp_path / "out"
+
+        convert([archive], dest=dest)
+        census = convert([archive], dest=dest)
+
+        assert census["written"] == 0
+        assert census["unchanged"] == 1
+
+    def test_zip_without_conversations_is_reported_not_raised(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = _zip(tmp_path, {"user.json": {}})
+
+        census = convert([archive], dest=tmp_path / "out")
+
+        assert census["conversations"] == 0
+        assert any("no conversations*.json" in e for e in census["errors"])
+
+    def test_corrupt_zip_is_reported_not_raised(self, tmp_path):
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        bad = tmp_path / "export.zip"
+        bad.write_bytes(b"PK\x03\x04 truncated")
+
+        census = convert([bad], dest=tmp_path / "out")
+
+        assert census["conversations"] == 0
+        assert census["errors"]
+
+    def test_hostile_member_name_writes_nothing_outside_dest(self, tmp_path):
+        """Members are read, never extracted: a path-traversal name is just a name."""
+        from brain_mcp.recorder.import_chatgpt import convert
+
+        archive = _zip(tmp_path, {"../conversations.json": [_conv()]})
+        dest = tmp_path / "out"
+
+        convert([archive], dest=dest)
+
+        assert not (tmp_path.parent / "conversations.json").exists()
+        assert [p.name for p in dest.iterdir()] == ["11111111-2222-3333-4444-555555555555.jsonl"]
 
 
 class TestLaneWiring:

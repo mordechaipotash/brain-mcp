@@ -425,7 +425,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("import-chatgpt",
                        help="convert a ChatGPT data export into the chatgpt_export lane")
     p.add_argument("source", nargs="+",
-                   help="conversations.json, or a directory holding conversations*.json")
+                   help="the export .zip, a conversations.json, or a directory "
+                        "holding conversations*.json")
     p.set_defaults(fn=cmd_import_chatgpt)
 
     p = sub.add_parser("serve", help="run the MCP server (stdio)")

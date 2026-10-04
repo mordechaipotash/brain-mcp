@@ -21,11 +21,13 @@ UTC, no `datetime.now()`, and no `hash()` (salted per process).
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import uuid
+import zipfile
 from collections.abc import Iterator
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .paths import imports_dir
 
@@ -131,12 +133,40 @@ def conversation_lines(conv: dict) -> tuple[str, list[str]]:
     return conv_id, lines
 
 
-def _export_files(path: Path) -> Iterator[Path]:
-    """A file, or every conversations*.json in a directory (exports get split)."""
-    if path.is_file():
-        yield path
+def _is_conversations_json(name: str) -> bool:
+    base = PurePosixPath(name).name
+    return fnmatch.fnmatchcase(base, "conversations*.json")
+
+
+def _export_chunks(path: Path) -> Iterator[tuple[str, bytes | None, str | None]]:
+    """(name, raw bytes, read error) for each conversations*.json behind `path`.
+
+    `path` may be a JSON file, a directory (exports get split), or the ZIP that
+    ChatGPT hands out. ZIP members are read in memory and never extracted, so a
+    hostile member name cannot write anywhere.
+    """
+    if path.is_file() and zipfile.is_zipfile(path):
+        try:
+            with zipfile.ZipFile(path) as zf:
+                members = sorted(n for n in zf.namelist()
+                                 if not n.endswith("/") and _is_conversations_json(n))
+                if not members:
+                    yield path.name, None, "no conversations*.json in archive"
+                for member in members:
+                    try:
+                        yield f"{path.name}:{member}", zf.read(member), None
+                    except (zipfile.BadZipFile, RuntimeError, OSError) as e:
+                        yield f"{path.name}:{member}", None, f"{type(e).__name__}: {e}"
+        except (zipfile.BadZipFile, OSError) as e:
+            yield path.name, None, f"{type(e).__name__}: {e}"
         return
-    yield from sorted(path.glob("conversations*.json"))
+
+    files = [path] if path.is_file() else sorted(path.glob("conversations*.json"))
+    for f in files:
+        try:
+            yield f.name, f.read_bytes(), None
+        except OSError as e:
+            yield f.name, None, f"{type(e).__name__}: {e}"
 
 
 def convert(sources: list[Path], dest: Path | None = None) -> dict:
@@ -152,14 +182,17 @@ def convert(sources: list[Path], dest: Path | None = None) -> dict:
               "dest": str(out_dir), "errors": []}
 
     for source in sources:
-        for export in _export_files(source):
+        for name, data, error in _export_chunks(source):
+            if data is None:
+                census["errors"].append(f"{name}: {error}")
+                continue
             try:
-                conversations = json.loads(export.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as e:
-                census["errors"].append(f"{export.name}: {type(e).__name__}: {e}")
+                conversations = json.loads(data.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                census["errors"].append(f"{name}: {type(e).__name__}: {e}")
                 continue
             if not isinstance(conversations, list):
-                census["errors"].append(f"{export.name}: expected a JSON array of conversations")
+                census["errors"].append(f"{name}: expected a JSON array of conversations")
                 continue
 
             census["files_read"] += 1
