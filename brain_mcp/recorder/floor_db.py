@@ -15,7 +15,7 @@ from pathlib import Path
 
 import duckdb
 
-from .paths import db_path
+from .paths import brain_home, db_path
 
 SCHEMA = """
 CREATE SCHEMA IF NOT EXISTS floor;
@@ -82,17 +82,26 @@ CREATE TABLE IF NOT EXISTS floor.ingest_state (
 );
 """
 
-DEFAULT_LANES = [
-    # (lane, agent, mode, root_glob) — Codex is scanner-only (P4); CC scanner is the hook backstop.
-    ("cc_transcript", "cc", "hook", "~/.claude/projects/**/*.jsonl"),
-    ("codex_rollout", "codex", "watch", "~/.codex/sessions/**/*.jsonl"),
-    ("pi_session", "pi", "watch", "~/.pi/agent/sessions/**/*.jsonl"),
-    # 2.1: everything inside a CC session's own folder — subagent + workflow transcripts
-    # (72% of CC's files, measured 2026-10-04), their .meta.json, and tool-results/ —
-    # mirrored into the lake at the same relative path. Scanner-only, like Codex: the
-    # 60s scan is well inside the 30-day cleanup, and the spool contract is per-session.
-    ("cc_sessiondir", "cc", "watch", "~/.claude/projects/*/*/**/*"),
-]
+def default_lanes() -> list[tuple[str, str, str, str]]:
+    """(lane, agent, mode, root_glob) — Codex is scanner-only (P4); CC scanner is the hook backstop.
+
+    The agent lanes watch each agent's own directory. The chatgpt lane is the
+    one whose origin lives inside BRAIN_HOME (no local ChatGPT files exist to
+    watch), so its glob is resolved rather than hardcoded — otherwise a
+    relocated BRAIN_HOME would seed a lane pointing at the default one.
+    """
+    return [
+        ("cc_transcript", "cc", "hook", "~/.claude/projects/**/*.jsonl"),
+        ("codex_rollout", "codex", "watch", "~/.codex/sessions/**/*.jsonl"),
+        ("pi_session", "pi", "watch", "~/.pi/agent/sessions/**/*.jsonl"),
+        # 2.1: everything inside a CC session's own folder — subagent + workflow transcripts
+        # (72% of CC's files, measured 2026-10-04), their .meta.json, and tool-results/ —
+        # mirrored into the lake at the same relative path. Scanner-only, like Codex: the
+        # 60s scan is well inside the 30-day cleanup, and the spool contract is per-session.
+        ("cc_sessiondir", "cc", "watch", "~/.claude/projects/*/*/**/*"),
+        ("chatgpt_export", "chatgpt", "watch",
+         str(brain_home() / "imports" / "chatgpt" / "**" / "*.jsonl")),
+    ]
 
 
 @contextmanager
@@ -137,7 +146,7 @@ def read_conn(path: Path | None = None):
 def init_db(path: Path | None = None) -> None:
     with write_conn(path) as c:
         c.execute(SCHEMA)
-        for lane, agent, mode, glob_ in DEFAULT_LANES:
+        for lane, agent, mode, glob_ in default_lanes():
             c.execute(
                 "INSERT INTO floor.lanes VALUES (?,?,?,?,true) ON CONFLICT DO NOTHING",
                 [lane, agent, mode, glob_],

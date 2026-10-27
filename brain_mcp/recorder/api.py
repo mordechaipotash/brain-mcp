@@ -43,7 +43,8 @@ def _lanes() -> list[dict]:
     return [dict(zip(["lane", "agent", "mode", "root_glob", "enabled"], r)) for r in rows]
 
 
-_AGENT_LANE = {"claude-code": "cc_transcript", "codex": "codex_rollout", "pi": "pi_session"}
+_AGENT_LANE = {"claude-code": "cc_transcript", "codex": "codex_rollout", "pi": "pi_session",
+               "chatgpt": "chatgpt_export"}
 
 
 def _lake_rel(agent: str, session: str, gen: int) -> str:

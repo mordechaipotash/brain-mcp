@@ -1,5 +1,5 @@
 """brain-mcp v2 CLI — record · install · uninstall · health · backup · redact ·
-migrate-v1 · restore · doctor · serve.
+migrate-v1 · restore · import-chatgpt · doctor · serve.
 
 Every verb prints what it measured. Windows is out of scope for v2.0 (stated,
 not implied). macOS scheduling = LaunchAgent; Linux = systemd user timer.
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .paths import brain_home, ensure_layout
 
-LANES = ["cc_transcript", "codex_rollout", "pi_session", "cc_sessiondir"]
+LANES = ["cc_transcript", "codex_rollout", "pi_session", "cc_sessiondir", "chatgpt_export"]
 PLIST_LABEL = "com.brainmcp.record"
 
 
@@ -332,6 +332,61 @@ def cmd_restore(args) -> int:
     return 0 if r.get("ok") else 3
 
 
+def cmd_import_chatgpt(args) -> int:
+    """Convert a ChatGPT export into the lane origin, then capture it."""
+    ensure_layout(LANES)   # files only: converting and recording need no database
+    from .import_chatgpt import convert, record_import
+
+    sources = [Path(s).expanduser() for s in args.source]
+    missing = [str(s) for s in sources if not s.exists()]
+    if missing:
+        print(f"no such path: {', '.join(missing)}", file=sys.stderr)
+        return 2
+
+    census = convert(sources)
+    if census["errors"]:
+        for e in census["errors"]:
+            print(f"warning: {e}", file=sys.stderr)
+    if not census["conversations"]:
+        print(json.dumps({"import": census}, indent=2))
+        print("nothing to capture: no conversations found in the export", file=sys.stderr)
+        return 1
+
+    # Where it came from goes on record before the floor takes it in: the manifest is the
+    # floor's own ledger, and a citation is only as checkable as its chain of origin.
+    recorded = record_import(census["provenance"])
+
+    # An import is not done until the floor holds it — but the lane is a watch lane, so this
+    # scan is a convenience: the origin files and the import record are already in place, and
+    # the next `record` tick captures them. A busy database must not turn that into a failure.
+    import duckdb
+
+    from .floor_db import init_db
+    from .scanner import scan_tick
+    from . import derived
+
+    scan = refreshed = None
+    try:
+        init_db()
+        scan = scan_tick(only_lane="chatgpt_export")
+        capped = (scan.get("chatgpt_export") or {}).get("rewrite-capped")
+        if capped:
+            print(f"warning: {capped} conversation(s) hit the rewrite cap and were not captured this "
+                  f"time — the import record states what was written, not what the floor holds",
+                  file=sys.stderr)
+        refreshed = derived.refresh()
+    except duckdb.IOException as e:
+        if "lock" not in str(e).lower():
+            raise
+        print("note: the conversations are in place under imports/chatgpt and the import is "
+              "recorded; another brain-mcp process holds the database lock, so the next `record` "
+              "tick will capture them.", file=sys.stderr)
+    print(json.dumps({"import": census, "provenance_recorded": recorded,
+                      "captured": refreshed is not None, "scan": scan, "derived": refreshed},
+                     indent=2, default=str))
+    return 0
+
+
 def cmd_serve(args) -> int:  # pragma: no cover
     from .server import main as serve_main
 
@@ -390,6 +445,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--accept-redacted", action="store_true",
                    help="restore even if the floor copy carries redaction tombstones")
     p.set_defaults(fn=cmd_restore)
+
+    p = sub.add_parser("import-chatgpt",
+                       help="convert a ChatGPT data export into the chatgpt_export lane")
+    p.add_argument("source", nargs="+",
+                   help="the export .zip, a conversations.json, or a directory "
+                        "holding conversations*.json")
+    p.set_defaults(fn=cmd_import_chatgpt)
 
     p = sub.add_parser("serve", help="run the MCP server (stdio)")
     p.set_defaults(fn=cmd_serve)

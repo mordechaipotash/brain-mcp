@@ -70,6 +70,19 @@ FROM (SELECT r.*, f.abs_path, f.session_hint,
       FROM dialects.v_live r JOIN floor.files f USING (file_id)
       WHERE r.agent = 'pi' AND json_valid(r.raw_line)) q;
 
+CREATE OR REPLACE VIEW dialects.v_chatgpt AS
+SELECT
+  r.file_id, r.witness_gen, r.line_no, r.lane, f.abs_path, f.session_hint AS file_key,
+  split_part(f.session_hint, '~', 1) AS session_id,
+  r.event_time, r.captured_at,
+  json_extract_string(r.raw_line, '$.type')          AS ev_type,
+  json_extract_string(r.raw_line, '$.message.role')  AS role,
+  json_extract_string(r.raw_line, '$.message.model') AS model,
+  json_extract(r.raw_line, '$.message.content')      AS content,
+  json_extract_string(r.raw_line, '$.title')         AS title
+FROM dialects.v_live r JOIN floor.files f USING (file_id)
+WHERE r.agent = 'chatgpt' AND json_valid(r.raw_line);
+
 -- shared text extraction over the common block-array shape
 CREATE OR REPLACE MACRO derived.text_of(content) AS
   CASE WHEN content IS NULL THEN NULL
@@ -149,6 +162,18 @@ SELECT 'pi:' || file_key || ':' || witness_gen || ':' || line_no AS msg_id,
        false AS is_subagent,
        derived.lake_rel(lane, file_key, witness_gen) AS lake_file
 FROM dialects.v_pi
+WHERE ev_type='message' AND role IN ('user','assistant')
+UNION ALL BY NAME
+SELECT 'chatgpt:' || file_key || ':' || witness_gen || ':' || line_no AS msg_id,
+       'chatgpt' AS agent, session_id AS session_id, role AS role, model AS model,
+       derived.text_of(content) AS text, event_time AS event_time,
+       captured_at AS captured_at, file_id AS file_id,
+       witness_gen AS witness_gen, line_no AS line_no,
+       -- an export's user messages are the person's own words
+       (role = 'user') AS human_authored,
+       false AS is_subagent,
+       derived.lake_rel(lane, file_key, witness_gen) AS lake_file
+FROM dialects.v_chatgpt
 WHERE ev_type='message' AND role IN ('user','assistant');
 
 CREATE TABLE IF NOT EXISTS derived.messages AS
